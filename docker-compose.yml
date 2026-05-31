@@ -1,0 +1,37 @@
+services:
+  worker:
+    build: ./worker
+    volumes:
+      - event_data:/events
+      - ./data:/data:ro
+    networks:
+      - app_net
+
+  api:
+    build: ./api
+    ports:
+      - "8000:8000"
+    volumes:
+      - event_data:/events
+      - ./data:/data:ro
+    networks:
+      - app_net
+    depends_on:
+      - worker
+
+  dashboard:
+    build: ./dashboard
+    ports:
+      - "3000:3000"
+    networks:
+      - app_net
+    depends_on:
+      - worker
+    environment:
+      - NEXT_PUBLIC_API_URL=http://api:8000
+
+volumes:
+  event_data:
+
+networks:
+  app_net:

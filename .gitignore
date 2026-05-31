@@ -1,0 +1,8 @@
+events/events.jsonl
+worker/models/*.pt
+*.mp4
+*.zip
+node_modules/
+__pycache__/
+.pytest_cache/
+.env.local
