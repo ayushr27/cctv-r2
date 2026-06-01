@@ -28,7 +28,10 @@ services:
     depends_on:
       - worker
     environment:
-      - NEXT_PUBLIC_API_URL=http://api:8000
+      # NEXT_PUBLIC_* is read by the BROWSER (client-side fetch), not the
+      # container — so it must be the host-reachable URL, not the in-network
+      # service name. The browser hits the API via the published localhost port.
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
 
 networks:
   app_net:
