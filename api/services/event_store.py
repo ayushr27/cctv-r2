@@ -28,6 +28,7 @@ from typing import Dict, List, Optional, Tuple
 
 import structlog
 
+from instrumentation import events_in_store, events_processed_total
 from schemas.events import EVENT_ADAPTER
 
 logger = structlog.get_logger()
@@ -160,6 +161,10 @@ class EventStore:
             self.staff_visit_ids = staff_ids
         if old is not None:
             old.close()
+
+        # Prometheus: total parsed across (re)loads + current gauge.
+        events_processed_total.inc(loaded)
+        events_in_store.set(loaded)
 
         logger.info("event_store_loaded", source=resolved, loaded=loaded,
                     skipped=skipped, staff_visits=len(staff_ids))

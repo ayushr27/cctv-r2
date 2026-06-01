@@ -25,6 +25,8 @@ import statistics
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Protocol
 
+from instrumentation import anomalies_current
+
 IST = timezone(timedelta(hours=5, minutes=30))
 BUCKET_MS = 5 * 60 * 1000
 
@@ -254,7 +256,12 @@ def run_detectors(
     to: Optional[str],
     kinds: Optional[List[str]] = None,
 ) -> List[dict]:
-    """Run all (or a filtered subset of) detectors and return sorted anomalies."""
+    """Run all (or a filtered subset of) detectors and return sorted anomalies.
+
+    Pure and side-effect-free: no metric mutation here, so dashboard polling
+    doesn't inflate counts. The anomalies_current gauge is refreshed by
+    refresh_anomaly_gauge() at startup instead.
+    """
     window = Window(from_, to)
     results: List[dict] = []
     for det in DETECTORS:
@@ -263,3 +270,17 @@ def run_detectors(
         results.extend(det.run(store, pos, window))
     results.sort(key=lambda a: (_SEVERITY_RANK.get(a["severity"], 9), a["window"]["from"]))
     return results
+
+
+def refresh_anomaly_gauge(store, pos, from_=None, to=None) -> int:
+    """
+    Recompute the anomalies_current gauge over the given window (default: all
+    data). Call at startup and after any store reload. Resets every kind to 0
+    first so kinds that no longer fire drop back to zero. Returns total count.
+    """
+    counts: Dict[str, int] = {d.kind: 0 for d in DETECTORS}
+    for a in run_detectors(store, pos, from_, to):
+        counts[a["kind"]] = counts.get(a["kind"], 0) + 1
+    for kind, n in counts.items():
+        anomalies_current.labels(kind=kind).set(n)
+    return sum(counts.values())

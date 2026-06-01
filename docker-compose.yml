@@ -33,5 +33,18 @@ services:
       # service name. The browser hits the API via the published localhost port.
       - NEXT_PUBLIC_API_URL=http://localhost:8000
 
+  # Optional metrics scraping — uncomment to enable. Prometheus scrapes the API
+  # at api:8000/internal/metrics (see prometheus.yml) and serves its UI on :9090.
+  # prometheus:
+  #   image: prom/prometheus:v2.54.1
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  #   networks:
+  #     - app_net
+  #   depends_on:
+  #     - api
+
 networks:
   app_net:
