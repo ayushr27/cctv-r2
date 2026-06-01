@@ -16,4 +16,7 @@ RUN pip install --no-cache-dir --timeout=300 -r requirements.txt
 
 COPY . .
 
+# Pre-download YOLOv8n weights so the container works offline after first build
+RUN python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
+
 CMD ["python", "-c", "print('worker ready')"]

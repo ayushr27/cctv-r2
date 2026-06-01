@@ -1,0 +1,61 @@
+{
+  "_meta": {
+    "frame_size": [1920, 1080],
+    "footage_date_ist": "2026-04-10",
+    "calibration": "Calibrated from real CAM frames + actual YOLO track trajectories on the ~2-min clips. Camera roles per problem statement: cam1/cam2 = store interior (browse zones), cam3 = outside main entrance (footfall line), cam5 = entrance + billing (cash counter). cam4 = store room (no customer zones, omitted). Coordinates are in each camera's own 1920x1080 pixel space; the funnel fuses cameras by 5-minute time bucket, NOT by cross-camera identity (deliberately out of scope).",
+    "coordinate_system": "pixels, origin top-left, +x right, +y down",
+    "feet_point": "events use bbox bottom-center (person's floor position)"
+  },
+
+  "cam3": {
+    "_role": "footfall (outside main entrance)",
+    "entry_line": {
+      "type": "line",
+      "points": [[1700, 470], [1700, 900]],
+      "direction": "in_when_x_decreases",
+      "_note": "Vertical line at the threshold; customers cross right(mall)->left(store) to enter. Tracks cluster near x=1640-1810 here."
+    }
+  },
+
+  "cam1": {
+    "_role": "interior browse (left brand wall + center aisle + right display)",
+    "left_shelf": {
+      "type": "polygon",
+      "points": [[0, 300], [520, 300], [520, 720], [0, 720]],
+      "_note": "The Face Shop / derma wall on the left."
+    },
+    "center_aisle": {
+      "type": "polygon",
+      "points": [[700, 300], [1150, 300], [1150, 1080], [700, 1080]],
+      "_note": "Central walking aisle into the store."
+    },
+    "right_display": {
+      "type": "polygon",
+      "points": [[1400, 340], [1920, 340], [1920, 760], [1400, 760]],
+      "_note": "Right-hand product display units."
+    }
+  },
+
+  "cam2": {
+    "_role": "interior browse (diagonal to cam1: makeup brand walls)",
+    "makeup_wall": {
+      "type": "polygon",
+      "points": [[1080, 360], [1920, 360], [1920, 940], [1080, 940]],
+      "_note": "Lakme / Faces Canada / Maybelline shelf wall (right)."
+    },
+    "left_counter": {
+      "type": "polygon",
+      "points": [[0, 320], [520, 320], [520, 860], [0, 860]],
+      "_note": "Left-side counter/display."
+    }
+  },
+
+  "cam5": {
+    "_role": "billing (entrance + cash counter); footfall intentionally NOT counted here to avoid double-counting cam3",
+    "cash_counter": {
+      "type": "polygon",
+      "points": [[180, 560], [1040, 540], [1040, 1040], [140, 1000]],
+      "_note": "Floor area around the white billing desk with the two laptops."
+    }
+  }
+}
