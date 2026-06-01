@@ -34,10 +34,13 @@ export interface Funnel {
 
 export interface Zone {
   name: string;
+  camera: string | null;
   visits: number;
   total_dwell_seconds: number;
   avg_dwell_seconds: number;
   conversion_proxy: number;
+  brands: string[];
+  brand_revenue: number;
 }
 
 export interface ZonesResponse {

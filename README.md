@@ -75,7 +75,8 @@ open http://localhost:8000/docs
 Three pages, 5-second polling (dark mode):
 
 - **Live** — footfall / conversion / avg-bill / revenue KPI cards + a recent-events feed.
-- **Funnel** — Recharts conversion funnel + a zone heatmap over a real CCTV frame.
+- **Funnel** — Recharts conversion funnel + a zone heatmap over the real store
+  floor plan, with per-zone brand revenue (zone footfall joined to POS sales).
 - **Anomalies** — severity-colored timeline with expandable evidence.
 
 _Screenshots:_ `docs/live.png` · `docs/funnel.png` · `docs/anomalies.png` _(add before submission)._

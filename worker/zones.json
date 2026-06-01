@@ -2,7 +2,7 @@
   "_meta": {
     "frame_size": [1920, 1080],
     "footage_date_ist": "2026-04-10",
-    "calibration": "Calibrated from real CAM frames + actual YOLO track trajectories on the ~2-min clips. Camera roles per problem statement: cam1/cam2 = store interior (browse zones), cam3 = outside main entrance (footfall line), cam5 = entrance + billing (cash counter). cam4 = store room (no customer zones, omitted). Coordinates are in each camera's own 1920x1080 pixel space; the funnel fuses cameras by 5-minute time bucket, NOT by cross-camera identity (deliberately out of scope).",
+    "calibration": "Zone NAMES + brand mapping come from 'Brigade Road - Store layout.xlsx' (the official floor plan); pixel polygons are calibrated to each CAM's own 1920x1080 frame + observed YOLO trajectories. Camera roles: cam1/cam2 = store interior brand walls (browse), cam3 = outside main entrance (footfall line), cam5 = entrance + billing (cash + accessories). cam4 = store room (no customer zones). The `brands` array on each zone lists the POS brand_name values that map to that physical zone, enabling a zone<->POS-sales join. The funnel fuses cameras by 5-min time bucket, NOT by cross-camera identity.",
     "coordinate_system": "pixels, origin top-left, +x right, +y down",
     "feet_point": "events use bbox bottom-center (person's floor position)"
   },
@@ -13,49 +13,61 @@
       "type": "line",
       "points": [[1700, 470], [1700, 900]],
       "direction": "in_when_x_decreases",
-      "_note": "Vertical line at the threshold; customers cross right(mall)->left(store) to enter. Tracks cluster near x=1640-1810 here."
+      "_note": "Vertical line at the threshold; customers cross right(mall)->left(store) to enter."
     }
   },
 
   "cam1": {
-    "_role": "interior browse (left brand wall + center aisle + right display)",
-    "left_shelf": {
+    "_role": "interior browse — top brand wall (The Face Shop / Good Vibes / DermDoc) + F.O.H makeup",
+    "the_face_shop": {
       "type": "polygon",
       "points": [[0, 300], [520, 300], [520, 720], [0, 720]],
-      "_note": "The Face Shop / derma wall on the left."
+      "brands": ["The Face Shop", "Beauty of Joseon", "COSRX", "Round Lab"],
+      "_note": "Left section of the top wall: Korean skincare brands (The Face Shop, EB Korean)."
     },
-    "center_aisle": {
+    "dermdoc": {
       "type": "polygon",
       "points": [[700, 300], [1150, 300], [1150, 1080], [700, 1080]],
-      "_note": "Central walking aisle into the store."
+      "brands": ["DERMDOC", "Good Vibes", "Aqualogica", "Foxtale", "Juicy Chemistry"],
+      "_note": "Centre of the top wall: DermDoc / Good Vibes / derma shelves + F.O.H aisle."
     },
-    "right_display": {
+    "makeup_unit": {
       "type": "polygon",
       "points": [[1400, 340], [1920, 340], [1920, 760], [1400, 760]],
-      "_note": "Right-hand product display units."
+      "brands": ["Purplle", "Carmesi", "GUBB", "CUFFS N LASHES"],
+      "_note": "Right-hand F.O.H makeup/nail units and accessories table."
     }
   },
 
   "cam2": {
-    "_role": "interior browse (diagonal to cam1: makeup brand walls)",
-    "makeup_wall": {
+    "_role": "interior browse — bottom brand wall (Lakme / Faces Canada / Maybelline / Alps)",
+    "faces_canada": {
       "type": "polygon",
       "points": [[1080, 360], [1920, 360], [1920, 940], [1080, 940]],
-      "_note": "Lakme / Faces Canada / Maybelline shelf wall (right)."
+      "brands": ["Faces Canada", "Lakme", "Maybelline", "Swiss Beauty", "NY Bae", "Renee"],
+      "_note": "Right wall: colour-cosmetics brands (Lakme, Faces Canada, Maybelline, NY Bae)."
     },
-    "left_counter": {
+    "alps_goodness": {
       "type": "polygon",
       "points": [[0, 320], [520, 320], [520, 860], [0, 860]],
-      "_note": "Left-side counter/display."
+      "brands": ["Alps Goodness", "Bare Anatomy", "Lotus Herbals", "Garnier", "Neutrogena"],
+      "_note": "Left section near the entrance: Alps Goodness + naturals/haircare."
     }
   },
 
   "cam5": {
-    "_role": "billing (entrance + cash counter); footfall intentionally NOT counted here to avoid double-counting cam3",
+    "_role": "billing (entrance + cash counter + accessories); footfall NOT counted here (cam3 owns it)",
     "cash_counter": {
       "type": "polygon",
       "points": [[180, 560], [1040, 540], [1040, 1040], [140, 1000]],
-      "_note": "Floor area around the white billing desk with the two laptops."
+      "brands": [],
+      "_note": "Floor area around the white billing desk with the two laptops (point of sale)."
+    },
+    "accessories": {
+      "type": "polygon",
+      "points": [[1380, 200], [1900, 200], [1900, 900], [1380, 900]],
+      "brands": ["Streax"],
+      "_note": "Illuminated ACCESSORIES display board on the right. (GUBB is mapped to makeup_unit only, to avoid double-counting brand revenue across zones.)"
     }
   }
 }

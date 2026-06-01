@@ -64,13 +64,21 @@ are **fused by 5-minute time bucket** — the same mechanism used for the POS jo
 There is deliberately **no cross-camera identity matching** (re-ID): `visit_id`
 chains only within a single camera.
 
+Zone names and their brand mapping come from the official store floor plan
+(`Brigade Road - Store layout.xlsx`): each zone is named after the real shelf
+section (the_face_shop, dermdoc, faces_canada, alps_goodness, makeup_unit,
+accessories, cash_counter) and carries the list of POS `brand_name` values
+shelved there. This powers a **zone ↔ brand-sales join** in `/zones` (zone
+footfall next to the revenue of the brands sold from that zone), and the every
+brand maps to exactly one zone so zone revenue reconciles to the POS total.
+
 | Camera | Real-world view              | Funnel role                         |
 | :----- | :--------------------------- | :---------------------------------- |
-| CAM 1  | Store interior (brand wall)  | Browse — zone dwell                 |
-| CAM 2  | Store interior, diagonal     | Browse — zone dwell                 |
+| CAM 1  | Store interior (top brand wall) | Browse — the_face_shop / dermdoc / makeup_unit |
+| CAM 2  | Store interior, diagonal (bottom wall) | Browse — faces_canada / alps_goodness |
 | CAM 3  | Outside main entrance        | **Footfall** — entry-line crossings |
 | CAM 4  | Store room                   | (no customers — omitted)            |
-| CAM 5  | Entrance + billing counter   | **Cash approach** — billing         |
+| CAM 5  | Entrance + billing counter   | **Cash approach** — cash_counter + accessories |
 
 ---
 

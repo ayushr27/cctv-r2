@@ -1,0 +1,64 @@
+{
+  "_note": "Zone->POS-brand map, mirrored from worker/zones.json (kept in api/ so the route needs no cross-build-context read, same pattern as api/schemas/events.py). Regenerate when zones.json changes.",
+  "zones": {
+    "the_face_shop": {
+      "camera": "cam1",
+      "brands": [
+        "The Face Shop",
+        "Beauty of Joseon",
+        "COSRX",
+        "Round Lab"
+      ]
+    },
+    "dermdoc": {
+      "camera": "cam1",
+      "brands": [
+        "DERMDOC",
+        "Good Vibes",
+        "Aqualogica",
+        "Foxtale",
+        "Juicy Chemistry"
+      ]
+    },
+    "makeup_unit": {
+      "camera": "cam1",
+      "brands": [
+        "Purplle",
+        "Carmesi",
+        "GUBB",
+        "CUFFS N LASHES"
+      ]
+    },
+    "faces_canada": {
+      "camera": "cam2",
+      "brands": [
+        "Faces Canada",
+        "Lakme",
+        "Maybelline",
+        "Swiss Beauty",
+        "NY Bae",
+        "Renee"
+      ]
+    },
+    "alps_goodness": {
+      "camera": "cam2",
+      "brands": [
+        "Alps Goodness",
+        "Bare Anatomy",
+        "Lotus Herbals",
+        "Garnier",
+        "Neutrogena"
+      ]
+    },
+    "cash_counter": {
+      "camera": "cam5",
+      "brands": []
+    },
+    "accessories": {
+      "camera": "cam5",
+      "brands": [
+        "Streax"
+      ]
+    }
+  }
+}

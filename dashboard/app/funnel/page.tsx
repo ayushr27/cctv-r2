@@ -19,18 +19,18 @@ import {
 const POLL_MS = 5000;
 const STAGE_COLORS = ["#34d399", "#38bdf8", "#a78bfa", "#fbbf24", "#fb7185"];
 
-// Illustrative positions for zone bubbles over the CCTV frame. Zones live in
-// per-camera pixel space (cam1/cam2 interior); the backdrop is the cam5 frame,
-// so these positions are layout hints, not exact projections — sizing is the
-// real signal (proportional to visit count).
+// Bubble positions over the real store floor plan (store_layout.png, % coords).
+// Zones are placed at their actual location on the plan: top wall = skincare/
+// derma brands, bottom wall = colour cosmetics, F.O.H centre = makeup units,
+// cash counter + accessories on the right.
 const ZONE_POS: Record<string, { x: number; y: number }> = {
-  center_aisle: { x: 50, y: 38 },
-  left_counter: { x: 20, y: 55 },
-  makeup_wall: { x: 78, y: 45 },
-  right_display: { x: 85, y: 70 },
-  left_shelf: { x: 15, y: 30 },
-  skincare: { x: 35, y: 25 },
-  cash_counter: { x: 45, y: 78 },
+  the_face_shop: { x: 22, y: 11 }, // top wall, left
+  dermdoc: { x: 45, y: 11 }, // top wall, centre
+  makeup_unit: { x: 56, y: 48 }, // F.O.H makeup units, centre
+  faces_canada: { x: 55, y: 90 }, // bottom wall
+  alps_goodness: { x: 78, y: 90 }, // bottom wall, right
+  cash_counter: { x: 85, y: 42 }, // right side
+  accessories: { x: 83, y: 12 }, // top-right board
 };
 
 export default function FunnelPage() {
@@ -123,23 +123,27 @@ export default function FunnelPage() {
         )}
       </section>
 
-      {/* Zone heatmap */}
+      {/* Zone heatmap over the real store floor plan */}
       <section className="rounded-xl border border-edge bg-panel p-5">
-        <h2 className="mb-1 text-sm font-medium text-slate-300">Zone heatmap</h2>
+        <h2 className="mb-1 text-sm font-medium text-slate-300">
+          Zone heatmap (store floor plan)
+        </h2>
         <p className="mb-3 text-xs text-slate-500">
-          Bubble size ∝ visits. Backdrop is a real CAM 5 frame; positions are
-          illustrative (zones are per-camera).
+          Bubble size ∝ visits, placed on the actual Brigade Road floor plan.
+          Each zone maps to the POS brands shelved there, so the table joins
+          footfall to brand revenue.
         </p>
-        <div className="relative w-full overflow-hidden rounded-lg border border-edge">
+        <div className="relative w-full overflow-hidden rounded-lg border border-edge bg-white">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/store_frame.jpg"
-            alt="store CCTV frame"
-            className="w-full opacity-60"
+            src="/store_layout.png"
+            alt="store floor plan"
+            className="w-full"
           />
           {zones.map((z) => {
-            const pos = ZONE_POS[z.name] ?? { x: 50, y: 50 };
-            const size = 24 + (z.visits / maxVisits) * 64;
+            const pos = ZONE_POS[z.name];
+            if (!pos) return null;
+            const size = 22 + (z.visits / maxVisits) * 56;
             return (
               <div
                 key={z.name}
@@ -147,14 +151,11 @@ export default function FunnelPage() {
                 style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
               >
                 <div
-                  className="flex items-center justify-center rounded-full bg-sky-400/30 ring-2 ring-sky-300 text-[10px] font-semibold text-white"
+                  className="flex items-center justify-center rounded-full bg-rose-500/50 ring-2 ring-rose-400 text-[11px] font-bold text-white shadow"
                   style={{ width: size, height: size }}
-                  title={`${z.name}: ${z.visits} visits, avg ${z.avg_dwell_seconds}s`}
+                  title={`${z.name}: ${z.visits} visits, avg ${z.avg_dwell_seconds}s, ₹${z.brand_revenue} brand sales`}
                 >
                   {z.visits}
-                </div>
-                <div className="mt-1 text-center text-[10px] text-slate-300 whitespace-nowrap">
-                  {z.name}
                 </div>
               </div>
             );
@@ -168,8 +169,9 @@ export default function FunnelPage() {
               <tr>
                 <th className="py-2">Zone</th>
                 <th className="py-2 text-right">Visits</th>
-                <th className="py-2 text-right">Total dwell (s)</th>
                 <th className="py-2 text-right">Avg dwell (s)</th>
+                <th className="py-2 text-right">Brand revenue</th>
+                <th className="py-2">Brands</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-edge">
@@ -178,10 +180,14 @@ export default function FunnelPage() {
                   <td className="py-2 text-slate-200">{z.name}</td>
                   <td className="py-2 text-right tabular-nums">{z.visits}</td>
                   <td className="py-2 text-right tabular-nums">
-                    {z.total_dwell_seconds}
-                  </td>
-                  <td className="py-2 text-right tabular-nums">
                     {z.avg_dwell_seconds}
+                  </td>
+                  <td className="py-2 text-right tabular-nums text-emerald-300">
+                    ₹{z.brand_revenue.toLocaleString("en-IN")}
+                  </td>
+                  <td className="py-2 text-xs text-slate-500">
+                    {z.brands.slice(0, 3).join(", ")}
+                    {z.brands.length > 3 ? "…" : ""}
                   </td>
                 </tr>
               ))}

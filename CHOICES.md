@@ -123,6 +123,24 @@ validates), free OpenAPI docs, and malformed lines are caught and skipped at loa
 rather than blowing up a route. Adding a new event type is a new model in the union,
 no route changes.
 
+## 11. Floor-plan-driven zones + zone↔brand-sales join
+
+**Decision:** Name zones after the real store floor plan
+(`Brigade Road - Store layout.xlsx`) and tag each with the POS `brand_name` values
+shelved there, so `/zones` reports zone footfall **alongside the revenue of the
+brands sold from that zone**.
+**Alternatives considered:** Generic geometric zone names (left_shelf, center_aisle);
+no zone↔sales link at all; per-line-item identity association.
+**Trade-off:** The CV zone (a camera's view) and the brand shelf are only
+approximately co-located — a person detected in the "faces_canada" zone didn't
+necessarily buy Faces Canada. It's a spatial correlation, not attribution. One
+brand (GUBB) plausibly spans two shelves; we assign it to a single zone so revenue
+reconciles exactly to the POS total (₹34,331.71) with no double-counting.
+**Why this for now:** It's the most meaningful zone↔sales signal available without
+cross-camera identity, and it uses real provided data (the floor plan) instead of
+invented zone names. Every rupee ties to a physical zone, which is auditable and
+demo-friendly. Brand→zone assignment is data, not code — edit `zones.json`.
+
 ---
 
 ## Deliberate deviations from the original plan (honest log)

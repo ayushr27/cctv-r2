@@ -107,12 +107,18 @@ class PosJoin:
     def __init__(self) -> None:
         self.bills: List[Bill] = []
         self.source: Optional[str] = None
+        # Per-line-item brand revenue records: (ts_ms, brand_name, amount).
+        # Kept at line-item granularity (not per-invoice) so brand revenue is
+        # accurate even when one bill spans multiple brands — used by the
+        # zone<->brand sales join in /zones.
+        self.brand_lines: List[tuple] = []
 
     # -- lifecycle --------------------------------------------------------
 
     def load(self, path: Optional[str] = None) -> int:
         resolved = path or next((p for p in _candidate_paths() if Path(p).exists()), None)
         bills: List[Bill] = []
+        brand_lines: List[tuple] = []
         if resolved and Path(resolved).exists():
             grouped: Dict[str, List[dict]] = defaultdict(list)
             with open(resolved, newline="") as f:
@@ -120,6 +126,12 @@ class PosJoin:
                     inv = (row.get("invoice_number") or "").strip()
                     if inv:
                         grouped[inv].append(row)
+                    brand = (row.get("brand_name") or "").strip()
+                    dt = _parse_ts(row.get("order_date", ""), row.get("order_time", ""))
+                    if brand and dt is not None:
+                        brand_lines.append(
+                            (int(dt.timestamp() * 1000), brand, _safe_float(row.get("total_amount")))
+                        )
 
             for inv, items in grouped.items():
                 # bill ts = earliest line-item timestamp
@@ -141,6 +153,7 @@ class PosJoin:
 
         bills.sort(key=lambda b: b.ts_ms or 0)
         self.bills = bills
+        self.brand_lines = brand_lines
         self.source = resolved
         logger.info(
             "pos_loaded",
@@ -174,6 +187,20 @@ class PosJoin:
         total = round(sum(b.amount for b in bills), 2)
         avg = round(total / n, 2) if n else 0.0
         return total, avg, n
+
+    def brand_revenue_in_window(
+        self, from_: Optional[str] = None, to_: Optional[str] = None
+    ) -> Dict[str, float]:
+        """{brand_name: total_amount} from line items within the window."""
+        lo, hi = _parse_iso_ms(from_), _parse_iso_ms(to_)
+        out: Dict[str, float] = defaultdict(float)
+        for ts_ms, brand, amount in self.brand_lines:
+            if lo is not None and ts_ms < lo:
+                continue
+            if hi is not None and ts_ms > hi:
+                continue
+            out[brand] += amount
+        return {b: round(v, 2) for b, v in out.items()}
 
     def data_range(self) -> Tuple[Optional[str], Optional[str]]:
         if not self.bills:
