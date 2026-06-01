@@ -476,7 +476,7 @@ services: api (FastAPI on :8000), worker (Python, no exposed port), dashboard
 
 Requirements:
 
-\- A named volume \`event\_data\` mounted at /events in api and worker
+\- A bind mount \`./events\` mounted at /events in api and worker (NOT a named volume — the api build context is \`./api\` and cannot COPY the repo-root \`events/events.sample.jsonl\` into its image, so an empty named volume would leave the API with zero events on a fresh \`docker compose up\` and fail the acceptance gate; the bind mount makes the committed sample visible immediately and worker output land in the gitignored host \`./events\` dir)
 
 \- A bind mount \`./data\` into both api and worker at /data (read-only for api)
 
@@ -1338,17 +1338,26 @@ Set up deployment to Render (api) and Vercel (dashboard). Worker stays local.
 
        healthCheckPath: /health
 
-3\) api/Dockerfile updates:
+3\) api/Dockerfile updates (RECONCILED with the Phase 3 build — read carefully):
 
-   \- COPY events/events.deploy.jsonl /events/events.deploy.jsonl
+   \- BUILD-CONTEXT CONFLICT: compose builds api from context \`./api\` (its Dockerfile
+     does \`COPY requirements.txt .\` + \`COPY . .\`), so it CANNOT see repo-root
+     \`events/\` or \`data/\`. The render.yaml above sets \`dockerContext: .\` (repo root),
+     a DIFFERENT context that would actually BREAK the current api/Dockerfile
+     (\`requirements.txt\` is not at repo root). Do NOT add \`COPY events/...\` to the
+     compose api/Dockerfile — it would break \`docker compose build api\`.
 
-   \- COPY data/pos/ /data/pos/
+   \- Resolution: add a dedicated \`api/Dockerfile.deploy\` (repo-root context, pointed
+     at by render.yaml \`dockerfilePath\`) that installs from \`api/requirements.txt\`,
+     copies \`api/\` into /app, then \`COPY events/events.deploy.jsonl /events/...\` and
+     \`COPY data/pos/ /data/pos/\`. Leave the compose api/Dockerfile COPY-free of
+     events/data — compose bind-mounts \`./events\` and \`./data\` instead (Phase 3 change).
 
-   \- At runtime, event\_store reads EVENTS\_FILE env var (default
-
-     /events/events.jsonl, fall back to events.sample.jsonl, fall back to
-
-     events.deploy.jsonl). Render path takes precedence via env var.
+   \- Runtime resolution is ALREADY implemented in api/services/event\_store.py: the
+     \`EVENTS\_FILE\` env var wins (Render sets it to /events/events.deploy.jsonl), then
+     it falls back to /events/events.jsonl, /events/events.sample.jsonl,
+     events/events.jsonl, events/events.sample.jsonl. No code change needed — just
+     set EVENTS\_FILE on Render.
 
 4\) api/main.py — add CORSMiddleware:
 

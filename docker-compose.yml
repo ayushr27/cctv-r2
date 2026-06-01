@@ -2,7 +2,7 @@ services:
   worker:
     build: ./worker
     volumes:
-      - event_data:/events
+      - ./events:/events
       - ./data:/data:ro
     networks:
       - app_net
@@ -12,7 +12,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - event_data:/events
+      - ./events:/events
       - ./data:/data:ro
     networks:
       - app_net
@@ -29,9 +29,6 @@ services:
       - worker
     environment:
       - NEXT_PUBLIC_API_URL=http://api:8000
-
-volumes:
-  event_data:
 
 networks:
   app_net:
