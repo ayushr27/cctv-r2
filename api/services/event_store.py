@@ -76,6 +76,8 @@ class EventStore:
         self._lock = threading.Lock()
         self.loaded = 0
         self.source: Optional[str] = None
+        # visit_ids flagged staff by track.staff_classified events (Phase 5).
+        self.staff_visit_ids: set = set()
 
     # -- lifecycle --------------------------------------------------------
 
@@ -111,6 +113,7 @@ class EventStore:
         self._init_schema(conn)
 
         loaded, skipped = 0, 0
+        staff_ids: set = set()
         if resolved and Path(resolved).exists():
             with open(resolved) as f:
                 rows = []
@@ -126,6 +129,8 @@ class EventStore:
                         logger.warning("event_parse_skip", lineno=lineno, error=str(exc))
                         continue
                     payload = raw.get("payload", {})
+                    if raw["type"] == "track.staff_classified" and payload.get("visit_id"):
+                        staff_ids.add(payload["visit_id"])
                     rows.append(
                         (
                             raw["event_id"],
@@ -152,10 +157,12 @@ class EventStore:
             self._conn = conn
             self.loaded = loaded
             self.source = resolved
+            self.staff_visit_ids = staff_ids
         if old is not None:
             old.close()
 
-        logger.info("event_store_loaded", source=resolved, loaded=loaded, skipped=skipped)
+        logger.info("event_store_loaded", source=resolved, loaded=loaded,
+                    skipped=skipped, staff_visits=len(staff_ids))
         return loaded
 
     # -- queries ----------------------------------------------------------

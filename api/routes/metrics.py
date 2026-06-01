@@ -25,10 +25,11 @@ def get_metrics(
     to: Optional[str] = Query(None),
 ):
     win_from, win_to = resolve_window(from_, to)
+    staff = store.staff_visit_ids
 
-    # footfall = unique customer visits. Footfall is owned by the entrance
-    # camera, so count visit.entered (staff exclusion arrives in Phase 5).
-    entered = store.get_payloads("visit.entered", win_from, win_to)
+    # footfall = unique CUSTOMER visits (staff excluded via track.staff_classified).
+    entered = [p for p in store.get_payloads("visit.entered", win_from, win_to)
+               if p["visit_id"] not in staff]
     footfall = len({p["visit_id"] for p in entered}) if entered else 0
 
     # unique_groups = distinct group_id (a null group is its own group).
@@ -42,15 +43,17 @@ def get_metrics(
     hist = store.hour_histogram("visit.entered", win_from, win_to)
     peak_hour = max(hist, key=hist.get) if hist else None
 
-    # avg_dwell_seconds = mean of visit.ended.total_dwell_ms / 1000.
-    visits = store.get_visits(win_from, win_to)
+    # avg_dwell_seconds = mean customer dwell (staff excluded).
+    visits = [v for v in store.get_visits(win_from, win_to)
+              if v.get("visit_id") not in staff]
     dwell_ms = [v.get("total_dwell_ms", 0) for v in visits]
     avg_dwell_seconds = round(sum(dwell_ms) / len(dwell_ms) / 1000, 2) if dwell_ms else 0.0
 
     # POS-derived: revenue + conversion (time-bucket join against footfall).
     total_revenue, avg_bill_value, _ = pos.revenue_in_window(win_from, win_to)
-    # entered payloads need a ts for bucketing; fetch full events for that.
-    entered_events = store.get_events(win_from, win_to, type_="visit.entered", limit=1000)
+    # entered payloads need a ts for bucketing; fetch full events (staff excluded).
+    entered_events = [e for e in store.get_events(win_from, win_to, type_="visit.entered", limit=1000)
+                      if e["payload"].get("visit_id") not in staff]
     conv = pos.conversion_in_window(entered_events, win_from, win_to)
 
     return MetricsResponse(

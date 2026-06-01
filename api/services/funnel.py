@@ -36,22 +36,32 @@ BROWSE_DWELL_MS = 5000
 
 
 def _raw_stage_counts(from_: Optional[str], to_: Optional[str]) -> Dict[str, int]:
-    # footfall: unique visit_ids that crossed an entry line
+    # Staff visits (track.staff_classified) are excluded from every CV stage —
+    # the funnel measures customers, not employees.
+    staff = store.staff_visit_ids
+
+    # footfall: unique customer visit_ids that crossed an entry line
     entered = store.get_payloads("visit.entered", from_, to_)
-    footfall = len({p["visit_id"] for p in entered})
+    footfall = len({p["visit_id"] for p in entered if p["visit_id"] not in staff})
 
     # browsed: visit_ids with at least one zone dwell > 5s
     exited = store.get_payloads("visit.exited_zone", from_, to_)
-    browsed_visits = {p["visit_id"] for p in exited if p.get("dwell_ms", 0) > BROWSE_DWELL_MS}
+    browsed_visits = {
+        p["visit_id"] for p in exited
+        if p.get("dwell_ms", 0) > BROWSE_DWELL_MS and p["visit_id"] not in staff
+    }
     browsed = len(browsed_visits)
 
     # engaged: visit_ids that visited >= 2 distinct zones (from visit.ended)
     visits = store.get_visits(from_, to_)
-    engaged = sum(1 for v in visits if len(v.get("zones_visited", [])) >= 2)
+    engaged = sum(
+        1 for v in visits
+        if len(v.get("zones_visited", [])) >= 2 and v.get("visit_id") not in staff
+    )
 
-    # approached_cash: unique visit_ids with a cash approach
+    # approached_cash: unique customer visit_ids with a cash approach
     cash = store.get_payloads("visit.approached_cash", from_, to_)
-    approached_cash = len({p["visit_id"] for p in cash})
+    approached_cash = len({p["visit_id"] for p in cash if p["visit_id"] not in staff})
 
     # billed: bills in window
     billed = len(pos.get_bills(from_, to_))

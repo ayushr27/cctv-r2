@@ -1,4 +1,5 @@
 events/events.jsonl
+events/events.classified.jsonl
 events/events_cam*.jsonl
 events/raw_*.jsonl
 worker/models/*.pt
