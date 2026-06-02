@@ -6,6 +6,8 @@ worker/models/*.pt
 *.mp4
 *.zip
 node_modules/
+.next/
+dashboard/tsconfig.tsbuildinfo
 __pycache__/
 .pytest_cache/
 .coverage
