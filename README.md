@@ -56,6 +56,7 @@ event+POS range).
 | `GET /funnel?from=&to=&granularity=hour\|day` | 5 funnel stages + drop-off rates + per-hour breakdown |
 | `GET /zones?from=&to=` | per-zone visits, dwell stats, conversion proxy |
 | `GET /anomaly?since=&kinds=` | detected anomalies (footfall drop, conversion drop, zone starvation) with evidence |
+| `GET /investigation?since=&kinds=` | loss-prevention review prompts (unbilled cash approach, long dwell) — camera + timestamp + clip reference, **no identity data** |
 | `GET /events?type=&from=&to=&limit=` | paginated raw event feed (limit ≤ 1000) |
 | `GET /internal/metrics` | Prometheus exposition format |
 | `GET /docs` | auto-generated OpenAPI / Swagger UI |
@@ -72,12 +73,16 @@ open http://localhost:8000/docs
 
 ## Dashboard
 
-Three pages, 5-second polling (dark mode):
+Four pages, 5-second polling (dark mode):
 
-- **Live** — footfall / conversion / avg-bill / revenue KPI cards + a recent-events feed.
+- **Live** — footfall / conversion / avg-bill / revenue + store-employees / groups /
+  peak-hour / avg-dwell KPI cards, and a recent-events feed.
 - **Funnel** — Recharts conversion funnel + a zone heatmap over the real store
   floor plan, with per-zone brand revenue (zone footfall joined to POS sales).
 - **Anomalies** — severity-colored timeline with expandable evidence.
+- **Investigation** — loss-prevention review prompts (camera + timestamp + clip
+  reference). Privacy-preserving: behavioural flags only, no identity stored. Pull
+  the secured footage for a flag with `make clip CAM=cam5 AT=<sec> PAD=15`.
 
 _Screenshots:_ `docs/live.png` · `docs/funnel.png` · `docs/anomalies.png` _(add before submission)._
 

@@ -15,6 +15,7 @@ from observability import (
 from routes.anomaly import router as anomaly_router
 from routes.events import router as events_router
 from routes.funnel import router as funnel_router
+from routes.investigation import router as investigation_router
 from routes.metrics import router as metrics_router
 from routes.zones import router as zones_router
 from services.anomaly_detect import refresh_anomaly_gauge
@@ -61,6 +62,7 @@ app.include_router(events_router)
 app.include_router(funnel_router)
 app.include_router(zones_router)
 app.include_router(anomaly_router)
+app.include_router(investigation_router)
 
 
 @app.get("/health")

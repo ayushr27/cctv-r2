@@ -1,4 +1,4 @@
-.PHONY: up down logs test test-worker ingest classify
+.PHONY: up down logs test test-worker ingest classify clip
 
 up:
 	docker compose up -d
@@ -18,7 +18,7 @@ test:
 		-v "$(PWD)/pytest.ini:/app/pytest.ini:ro" \
 		-e PYTHONPATH=/app/api api \
 		python -m pytest tests/test_api.py tests/test_pos_join.py \
-		tests/test_anomaly.py tests/test_smoke.py \
+		tests/test_anomaly.py tests/test_investigation.py tests/test_smoke.py \
 		--cov=services --cov-report=term-missing --cov-fail-under=70
 
 test-worker:
@@ -30,6 +30,11 @@ test-worker:
 
 ingest:
 	docker compose run --rm worker python detect.py --video $$VIDEO
+
+# Extract a review clip for an /investigation incident from the secured source
+# footage (operator action, not pre-baked). e.g. make clip CAM=cam5 AT=24 PAD=15
+clip:
+	bash scripts/extract_clip.sh $(CAM) $(AT) $(PAD)
 
 # Staff classification pass over the merged event log (Phase 5).
 # Overwrites events.jsonl with the classified superset so the API picks it up.

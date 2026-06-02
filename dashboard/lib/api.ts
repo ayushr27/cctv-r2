@@ -67,6 +67,24 @@ export interface AnomaliesResponse {
   anomalies: Anomaly[];
 }
 
+export interface Incident {
+  kind: string;
+  severity: "info" | "warning" | "critical";
+  camera: string;
+  ts: string;
+  window: { from: string; to: string };
+  evidence: string;
+  clip_ref: { camera: string; from: string; to: string; review: string };
+}
+
+export interface InvestigationResponse {
+  window: { from: string | null; to: string | null };
+  kinds_available: string[];
+  count: number;
+  note?: string;
+  incidents: Incident[];
+}
+
 export interface EventEnvelope {
   event_id: string;
   ts: string;
@@ -115,3 +133,6 @@ export const getAnomalies = (since?: string, kinds?: string) =>
 
 export const getEvents = (type?: string, limit = 20) =>
   get<EventsResponse>(`/events${qs({ type, limit })}`);
+
+export const getInvestigation = (since?: string, kinds?: string) =>
+  get<InvestigationResponse>(`/investigation${qs({ since, kinds })}`);
