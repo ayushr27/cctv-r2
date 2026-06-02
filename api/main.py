@@ -13,6 +13,7 @@ from observability import (
     configure_logging,
 )
 from routes.anomaly import router as anomaly_router
+from routes.brands import router as brands_router
 from routes.events import router as events_router
 from routes.funnel import router as funnel_router
 from routes.investigation import router as investigation_router
@@ -63,6 +64,7 @@ app.include_router(funnel_router)
 app.include_router(zones_router)
 app.include_router(anomaly_router)
 app.include_router(investigation_router)
+app.include_router(brands_router)
 
 
 @app.get("/health")

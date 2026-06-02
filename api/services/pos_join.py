@@ -129,9 +129,13 @@ class PosJoin:
                     brand = (row.get("brand_name") or "").strip()
                     dt = _parse_ts(row.get("order_date", ""), row.get("order_time", ""))
                     if brand and dt is not None:
-                        brand_lines.append(
-                            (int(dt.timestamp() * 1000), brand, _safe_float(row.get("total_amount")))
-                        )
+                        brand_lines.append((
+                            int(dt.timestamp() * 1000),
+                            brand,
+                            _safe_float(row.get("total_amount")),
+                            _safe_int(row.get("qty")),
+                            (row.get("product_name") or "").strip(),
+                        ))
 
             for inv, items in grouped.items():
                 # bill ts = earliest line-item timestamp
@@ -194,13 +198,43 @@ class PosJoin:
         """{brand_name: total_amount} from line items within the window."""
         lo, hi = _parse_iso_ms(from_), _parse_iso_ms(to_)
         out: Dict[str, float] = defaultdict(float)
-        for ts_ms, brand, amount in self.brand_lines:
+        for ts_ms, brand, amount, _qty, _product in self.brand_lines:
             if lo is not None and ts_ms < lo:
                 continue
             if hi is not None and ts_ms > hi:
                 continue
             out[brand] += amount
         return {b: round(v, 2) for b, v in out.items()}
+
+    def brand_breakdown_in_window(
+        self, from_: Optional[str] = None, to_: Optional[str] = None
+    ) -> Dict[str, dict]:
+        """
+        Per brand within the window: {brand: {revenue, units, top_products}}.
+        top_products is the [(product_name, units)] list (desc), aggregate POS
+        sales — i.e. *what sells from that brand*, NOT linked to any individual.
+        """
+        lo, hi = _parse_iso_ms(from_), _parse_iso_ms(to_)
+        rev: Dict[str, float] = defaultdict(float)
+        units: Dict[str, int] = defaultdict(int)
+        products: Dict[str, Counter] = defaultdict(Counter)
+        for ts_ms, brand, amount, qty, product in self.brand_lines:
+            if lo is not None and ts_ms < lo:
+                continue
+            if hi is not None and ts_ms > hi:
+                continue
+            rev[brand] += amount
+            units[brand] += qty
+            if product:
+                products[brand][product] += qty
+        out: Dict[str, dict] = {}
+        for brand in rev:
+            out[brand] = {
+                "revenue": round(rev[brand], 2),
+                "units": units[brand],
+                "top_products": products[brand].most_common(3),
+            }
+        return out
 
     def data_range(self) -> Tuple[Optional[str], Optional[str]]:
         if not self.bills:

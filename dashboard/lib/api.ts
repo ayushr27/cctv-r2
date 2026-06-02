@@ -67,6 +67,28 @@ export interface AnomaliesResponse {
   anomalies: Anomaly[];
 }
 
+export interface BrandStand {
+  stand: string;
+  camera: string | null;
+  brands: string[];
+  visits: number;
+  attention_seconds: number;
+  attention_share: number;
+  revenue: number;
+  units: number;
+  revenue_per_visit: number;
+  revenue_per_attention_min: number;
+  top_products: { product: string; units: number }[];
+  signal: string;
+}
+
+export interface BrandsResponse {
+  window: { from: string | null; to: string | null };
+  count: number;
+  stands: BrandStand[];
+  note?: string;
+}
+
 export interface Incident {
   kind: string;
   severity: "info" | "warning" | "critical";
@@ -136,3 +158,6 @@ export const getEvents = (type?: string, limit = 20) =>
 
 export const getInvestigation = (since?: string, kinds?: string) =>
   get<InvestigationResponse>(`/investigation${qs({ since, kinds })}`);
+
+export const getBrands = (from?: string, to?: string) =>
+  get<BrandsResponse>(`/brands${qs({ from, to })}`);

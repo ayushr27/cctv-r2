@@ -18,7 +18,7 @@ test:
 		-v "$(PWD)/pytest.ini:/app/pytest.ini:ro" \
 		-e PYTHONPATH=/app/api api \
 		python -m pytest tests/test_api.py tests/test_pos_join.py \
-		tests/test_anomaly.py tests/test_investigation.py tests/test_smoke.py \
+		tests/test_anomaly.py tests/test_investigation.py tests/test_brands.py tests/test_smoke.py \
 		--cov=services --cov-report=term-missing --cov-fail-under=70
 
 test-worker:
