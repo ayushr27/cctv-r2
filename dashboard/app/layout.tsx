@@ -1,46 +1,30 @@
 import "./globals.css";
-import Link from "next/link";
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import Sidebar from "../components/Sidebar";
+import StatusClock from "../components/StatusClock";
 
-export const metadata = {
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+
+export const metadata: Metadata = {
   title: "Store Intelligence",
   description: "Purplle Brigade Bangalore — CCTV + POS analytics",
 };
 
-const NAV = [
-  { href: "/", label: "Live" },
-  { href: "/funnel", label: "Funnel" },
-  { href: "/brands", label: "Brands" },
-  { href: "/customers", label: "Customers" },
-  { href: "/anomalies", label: "Anomalies" },
-  { href: "/investigation", label: "Investigation" },
-];
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen">
-        <header className="border-b border-edge bg-panel/60 backdrop-blur sticky top-0 z-10">
-          <nav className="mx-auto max-w-6xl flex items-center gap-6 px-6 py-4">
-            <span className="font-semibold tracking-tight text-slate-100">
-              🛍️ Store Intelligence
+    <html lang="en" className={inter.variable}>
+      <body className="font-sans">
+        <Sidebar />
+        <div className="pl-60">
+          <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-border bg-bg/80 px-8 backdrop-blur">
+            <span className="text-xs uppercase tracking-wider text-slate-500">
+              Retail Analytics
             </span>
-            <div className="flex gap-1">
-              {NAV.map((n) => (
-                <Link
-                  key={n.href}
-                  href={n.href}
-                  className="px-3 py-1.5 rounded-md text-sm text-slate-300 hover:bg-edge hover:text-white transition-colors"
-                >
-                  {n.label}
-                </Link>
-              ))}
-            </div>
-            <span className="ml-auto text-xs text-slate-500">
-              Brigade Bangalore · 10 Apr 2026
-            </span>
-          </nav>
-        </header>
-        <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+            <StatusClock />
+          </header>
+          <main className="mx-auto max-w-6xl animate-fade-in px-8 py-8">{children}</main>
+        </div>
       </body>
     </html>
   );
