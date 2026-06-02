@@ -42,7 +42,7 @@ jobs:
 
       - name: API tests + coverage gate (services)
         run: >
-          pytest tests/test_api.py tests/test_pos_join.py tests/test_anomaly.py tests/test_investigation.py tests/test_brands.py tests/test_customers.py tests/test_smoke.py
+          pytest tests/test_api.py tests/test_pos_join.py tests/test_anomaly.py tests/test_investigation.py tests/test_brands.py tests/test_customers.py tests/test_clips.py tests/test_smoke.py
           --cov=services
           --cov-report=term-missing
           --cov-fail-under=70

@@ -231,6 +231,7 @@ class ZoneStarvationDetector:
                                 f"Zone '{zone}' had no visit.entered_zone for "
                                 f"{minutes:.0f} min during open hours."
                             ),
+                            "zone": zone,
                         }
                     )
         return out
@@ -248,6 +249,20 @@ DETECTORS: List[Detector] = [
 
 _SEVERITY_RANK = {"critical": 0, "warning": 1, "info": 2}
 
+# Which camera to review for each anomaly, so the dashboard can offer footage.
+_KIND_CAMERA = {"footfall_drop": "cam3", "conversion_drop": "cam5"}
+_ZONE_CAMERA = {
+    "the_face_shop": "cam1", "dermdoc": "cam1", "makeup_unit": "cam1",
+    "faces_canada": "cam2", "alps_goodness": "cam2",
+    "cash_counter": "cam5", "accessories": "cam5",
+}
+
+
+def _anomaly_camera(a: dict) -> Optional[str]:
+    if a.get("kind") == "zone_starvation":
+        return _ZONE_CAMERA.get(a.get("zone"))
+    return _KIND_CAMERA.get(a.get("kind"))
+
 
 def run_detectors(
     store,
@@ -260,14 +275,21 @@ def run_detectors(
 
     Pure and side-effect-free: no metric mutation here, so dashboard polling
     doesn't inflate counts. The anomalies_current gauge is refreshed by
-    refresh_anomaly_gauge() at startup instead.
+    refresh_anomaly_gauge() at startup instead. Each anomaly is annotated with
+    the camera to review + a playable clip reference (when footage is available).
     """
+    from services.clips import resolve_clip
+
     window = Window(from_, to)
     results: List[dict] = []
     for det in DETECTORS:
         if kinds and det.kind not in kinds:
             continue
         results.extend(det.run(store, pos, window))
+    for a in results:
+        camera = _anomaly_camera(a)
+        a["camera"] = camera
+        a["clip"] = resolve_clip(camera, a["window"]["from"], a["window"]["to"])
     results.sort(key=lambda a: (_SEVERITY_RANK.get(a["severity"], 9), a["window"]["from"]))
     return results
 

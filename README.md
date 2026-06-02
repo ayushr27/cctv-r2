@@ -58,7 +58,8 @@ event+POS range).
 | `GET /brands?from=&to=` | per brand-stand engagement: customer attention (dwell, share) joined to POS revenue / units / top products + efficiency signals |
 | `GET /customers?from=&to=` | non-demographic segments: solo vs group (CV), new vs repeat (POS), basket composition. **No gender/age inference** |
 | `GET /anomaly?since=&kinds=` | detected anomalies (footfall drop, conversion drop, zone starvation) with evidence |
-| `GET /investigation?since=&kinds=` | loss-prevention review prompts (unbilled cash approach, long dwell) — camera + timestamp + clip reference, **no identity data** |
+| `GET /investigation?since=&kinds=` | loss-prevention review prompts (unbilled cash approach, long dwell) — camera + timestamp + playable clip, **no identity data** |
+| `GET /clip/{camera}` | streams the camera's CCTV clip (HTTP range) so the dashboard plays footage at a flagged instant. Raw footage — **gate behind auth in production** |
 | `GET /events?type=&from=&to=&limit=` | paginated raw event feed (limit ≤ 1000) |
 | `GET /internal/metrics` | Prometheus exposition format |
 | `GET /docs` | auto-generated OpenAPI / Swagger UI |

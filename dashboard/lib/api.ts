@@ -5,7 +5,17 @@
 const BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000";
 
+export const API_BASE = BASE;
+
 // ---- response types ----
+
+export interface Clip {
+  camera: string;
+  available: boolean;
+  video_url: string;
+  start_s: number;
+  end_s: number;
+}
 
 export interface Metrics {
   window: { from: string | null; to: string | null };
@@ -58,6 +68,8 @@ export interface Anomaly {
   expected_p50: number | null;
   z_score: number | null;
   evidence: string;
+  camera?: string | null;
+  clip?: Clip | null;
 }
 
 export interface AnomaliesResponse {
@@ -111,7 +123,16 @@ export interface Incident {
   ts: string;
   window: { from: string; to: string };
   evidence: string;
-  clip_ref: { camera: string; from: string; to: string; review: string };
+  clip_ref: {
+    camera: string;
+    from: string;
+    to: string;
+    review: string;
+    available?: boolean;
+    video_url?: string;
+    start_s?: number;
+    end_s?: number;
+  };
 }
 
 export interface InvestigationResponse {

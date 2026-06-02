@@ -45,12 +45,19 @@ def _iso(ms: int) -> str:
 
 def _clip_ref(camera: str, center_ms: int, pad_s: int = CLIP_PAD_S) -> dict:
     lo, hi = center_ms - pad_s * 1000, center_ms + pad_s * 1000
-    return {
+    ref = {
         "camera": camera,
         "from": _iso(lo),
         "to": _iso(hi),
         "review": f"Open {camera} footage {_iso(lo)[11:19]}–{_iso(hi)[11:19]} (±{pad_s}s)",
     }
+    # Attach playable-clip fields (video_url, start_s, end_s, available) so the
+    # dashboard can show the footage at this instant.
+    from services.clips import resolve_clip
+    clip = resolve_clip(camera, ref["from"], ref["to"])
+    if clip:
+        ref.update(clip)
+    return ref
 
 
 class Window:

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getInvestigation, type Incident } from "../../lib/api";
 import { Card, PageHeader, Badge, Skeleton, EmptyState, ErrorBanner, cx } from "../../components/ui";
+import ClipPlayer from "../../components/ClipPlayer";
 
 const POLL_MS = 5000;
 
@@ -31,16 +32,27 @@ function IncidentCard({ inc }: { inc: Incident }) {
           <Badge tone={TONE[inc.severity]}>{inc.severity}</Badge>
           <span className="text-sm font-medium text-slate-200">{KIND_LABEL[inc.kind] ?? inc.kind}</span>
           <Badge tone="neutral">{inc.camera}</Badge>
-          <span className="ml-auto text-xs tabular-nums text-slate-500">{clock(inc.ts)}</span>
+          <span className="ml-auto flex items-center gap-2 text-xs tabular-nums text-slate-500">
+            {inc.clip_ref.available && <span className="text-accent-hover">▶ footage</span>}
+            {clock(inc.ts)}
+            <span className={cx("transition-transform", open && "rotate-90")}>›</span>
+          </span>
         </div>
         <div className="mt-2 pl-5 text-sm text-slate-300">{inc.evidence}</div>
-        <div className="mt-2 pl-5 text-xs text-accent-hover">▸ {inc.clip_ref.review}</div>
-        {open && (
-          <pre className="mt-3 overflow-x-auto rounded-lg border border-border bg-bg p-3 text-[11px] text-slate-400">
-{JSON.stringify(inc, null, 2)}
-          </pre>
-        )}
       </button>
+      {open && (
+        <div className="border-t border-border px-4 pb-4 pt-1">
+          <ClipPlayer clip={inc.clip_ref as any} review={inc.clip_ref.review} />
+          <details className="mt-3">
+            <summary className="cursor-pointer text-[11px] uppercase tracking-wide text-slate-500 hover:text-slate-300">
+              Raw incident JSON
+            </summary>
+            <pre className="mt-2 overflow-x-auto rounded-lg border border-border bg-bg p-3 text-[11px] text-slate-400">
+{JSON.stringify(inc, null, 2)}
+            </pre>
+          </details>
+        </div>
+      )}
     </Card>
   );
 }

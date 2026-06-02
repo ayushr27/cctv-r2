@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getAnomalies, type Anomaly } from "../../lib/api";
 import { PageHeader, Badge, Skeleton, EmptyState, ErrorBanner, cx } from "../../components/ui";
+import ClipPlayer from "../../components/ClipPlayer";
 
 const POLL_MS = 5000;
 
@@ -23,20 +24,34 @@ function Item({ a }: { a: Anomaly }) {
   return (
     <div className="relative pl-6">
       <span className={cx("absolute left-1.5 top-3.5 h-2.5 w-2.5 rounded-full ring-4 ring-bg", DOT[a.severity])} />
-      <button onClick={() => setOpen((o) => !o)}
-        className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-border-strong">
-        <div className="flex items-center gap-3">
-          <Badge tone={TONE[a.severity]}>{a.severity}</Badge>
-          <span className="font-mono text-xs text-slate-400">{a.kind}</span>
-          <span className="ml-auto text-xs tabular-nums text-slate-500">{hourOf(a.window.from)}</span>
-        </div>
-        <div className="mt-1.5 text-sm text-slate-300">{a.evidence}</div>
+      <div className="rounded-lg border border-border bg-surface transition-colors hover:border-border-strong">
+        <button onClick={() => setOpen((o) => !o)} className="w-full px-4 py-3 text-left">
+          <div className="flex items-center gap-3">
+            <Badge tone={TONE[a.severity]}>{a.severity}</Badge>
+            <span className="font-mono text-xs text-slate-400">{a.kind}</span>
+            {a.camera && <Badge tone="neutral">{a.camera}</Badge>}
+            <span className="ml-auto flex items-center gap-2 text-xs tabular-nums text-slate-500">
+              {a.clip?.available && <span className="text-accent-hover">▶ footage</span>}
+              {hourOf(a.window.from)}
+              <span className={cx("transition-transform", open && "rotate-90")}>›</span>
+            </span>
+          </div>
+          <div className="mt-1.5 text-sm text-slate-300">{a.evidence}</div>
+        </button>
         {open && (
-          <pre className="mt-3 overflow-x-auto rounded-lg border border-border bg-bg p-3 text-[11px] text-slate-400">
+          <div className="border-t border-border px-4 pb-4 pt-1">
+            <ClipPlayer clip={a.clip} review={`Review ${a.camera ?? ""} around ${hourOf(a.window.from)}`} />
+            <details className="mt-3">
+              <summary className="cursor-pointer text-[11px] uppercase tracking-wide text-slate-500 hover:text-slate-300">
+                Raw anomaly JSON
+              </summary>
+              <pre className="mt-2 overflow-x-auto rounded-lg border border-border bg-bg p-3 text-[11px] text-slate-400">
 {JSON.stringify(a, null, 2)}
-          </pre>
+              </pre>
+            </details>
+          </div>
         )}
-      </button>
+      </div>
     </div>
   );
 }
