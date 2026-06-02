@@ -67,6 +67,21 @@ export interface AnomaliesResponse {
   anomalies: Anomaly[];
 }
 
+export interface CustomerSegments {
+  window: { from: string | null; to: string | null };
+  shopping_party: { solo: number; group: number; group_rate: number; basis: string };
+  customers: { unique: number; repeat: number; repeat_rate: number; basis: string };
+  basket: {
+    bills: number;
+    avg_items_per_bill: number;
+    avg_value_per_bill: number;
+    single_brand_bills: number;
+    multi_brand_bills: number;
+    avg_brands_per_bill: number;
+  };
+  note?: string;
+}
+
 export interface BrandStand {
   stand: string;
   camera: string | null;
@@ -161,3 +176,6 @@ export const getInvestigation = (since?: string, kinds?: string) =>
 
 export const getBrands = (from?: string, to?: string) =>
   get<BrandsResponse>(`/brands${qs({ from, to })}`);
+
+export const getCustomers = (from?: string, to?: string) =>
+  get<CustomerSegments>(`/customers${qs({ from, to })}`);

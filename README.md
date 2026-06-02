@@ -56,6 +56,7 @@ event+POS range).
 | `GET /funnel?from=&to=&granularity=hour\|day` | 5 funnel stages + drop-off rates + per-hour breakdown |
 | `GET /zones?from=&to=` | per-zone visits, dwell stats, conversion proxy |
 | `GET /brands?from=&to=` | per brand-stand engagement: customer attention (dwell, share) joined to POS revenue / units / top products + efficiency signals |
+| `GET /customers?from=&to=` | non-demographic segments: solo vs group (CV), new vs repeat (POS), basket composition. **No gender/age inference** |
 | `GET /anomaly?since=&kinds=` | detected anomalies (footfall drop, conversion drop, zone starvation) with evidence |
 | `GET /investigation?since=&kinds=` | loss-prevention review prompts (unbilled cash approach, long dwell) — camera + timestamp + clip reference, **no identity data** |
 | `GET /events?type=&from=&to=&limit=` | paginated raw event feed (limit ≤ 1000) |
@@ -74,7 +75,7 @@ open http://localhost:8000/docs
 
 ## Dashboard
 
-Five pages, 5-second polling (dark mode):
+Six pages, 5-second polling (dark mode):
 
 - **Live** — footfall / conversion / avg-bill / revenue + store-employees / groups /
   peak-hour / avg-dwell KPI cards, and a recent-events feed.
@@ -83,6 +84,8 @@ Five pages, 5-second polling (dark mode):
 - **Brands** — per brand-stand engagement: customer attention vs. POS sales,
   ₹/visit & ₹/attention-minute efficiency, top products sold, and a
   "browsed-but-not-bought" merchandising signal.
+- **Customers** — non-demographic segments: solo vs group shoppers, new vs
+  repeat customers, basket composition. No gender/age inference.
 - **Anomalies** — severity-colored timeline with expandable evidence.
 - **Investigation** — loss-prevention review prompts (camera + timestamp + clip
   reference). Privacy-preserving: behavioural flags only, no identity stored. Pull

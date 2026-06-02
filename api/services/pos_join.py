@@ -81,9 +81,11 @@ def _safe_int(v) -> int:
 
 
 class Bill:
-    __slots__ = ("invoice_number", "ts", "ts_ms", "amount", "items", "salesperson_id", "brands")
+    __slots__ = ("invoice_number", "ts", "ts_ms", "amount", "items",
+                 "salesperson_id", "brands", "customer_number")
 
-    def __init__(self, invoice_number, ts, amount, items, salesperson_id, brands):
+    def __init__(self, invoice_number, ts, amount, items, salesperson_id, brands,
+                 customer_number=""):
         self.invoice_number = invoice_number
         self.ts = ts                      # ISO-8601 string
         self.ts_ms = _parse_iso_ms(ts)
@@ -91,6 +93,7 @@ class Bill:
         self.items = items
         self.salesperson_id = salesperson_id
         self.brands = sorted(brands)
+        self.customer_number = customer_number  # for new-vs-returning segments
 
     def as_dict(self) -> dict:
         return {
@@ -153,7 +156,10 @@ class PosJoin:
                     (r.get("salesperson_id") or "").strip() for r in items
                 ).most_common(1)[0][0]
                 brands = {(r.get("brand_name") or "").strip() for r in items if r.get("brand_name")}
-                bills.append(Bill(inv, ts, amount, qty, sp, brands))
+                cust = Counter(
+                    (r.get("customer_number") or "").strip() for r in items
+                ).most_common(1)[0][0]
+                bills.append(Bill(inv, ts, amount, qty, sp, brands, cust))
 
         bills.sort(key=lambda b: b.ts_ms or 0)
         self.bills = bills
