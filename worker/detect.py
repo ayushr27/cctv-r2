@@ -17,11 +17,56 @@ from datetime import timedelta
 from pathlib import Path
 
 import cv2
+import numpy as np
 import structlog
 
 from config import DEFAULT_FPS, PERSON_CLASS, YOLO_MODEL, get_start_datetime
 
 logger = structlog.get_logger()
+
+# "Black clothing" = a pixel that is both dark (low Value) AND achromatic (low
+# Saturation). Requiring low S is what separates a black uniform from dark-but-
+# coloured clothing (navy/maroon) — critical on this dim evening footage where a
+# brightness-only test flags almost everyone.
+BLACK_V_MAX = 80   # HSV Value (0–255): below this = dark
+BLACK_S_MAX = 55   # HSV Saturation (0–255): below this = near-greyscale (black)
+
+
+def outfit_darkness(img, bbox) -> tuple[float, float]:
+    """
+    Fraction of *black* pixels (low V AND low S) in the torso and leg bands of a
+    person box — a proxy for "black top" / "black bottom".
+
+    We center-crop horizontally (0.25–0.75 of width) to avoid arms/background,
+    sample the torso (0.15–0.55 of height) and legs (0.55–0.92), and return
+    (top_dark, bot_dark) each in [0, 1]. Returns (0, 0) for degenerate crops.
+    """
+    h_img, w_img = img.shape[:2]
+    x1, y1, x2, y2 = bbox
+    x1 = max(0, int(x1)); y1 = max(0, int(y1))
+    x2 = min(w_img, int(x2)); y2 = min(h_img, int(y2))
+    bw, bh = x2 - x1, y2 - y1
+    if bw < 6 or bh < 12:
+        return 0.0, 0.0
+
+    cx1 = x1 + int(0.25 * bw)
+    cx2 = x1 + int(0.75 * bw)
+    if cx2 <= cx1:
+        return 0.0, 0.0
+
+    def black_frac(ya: float, yb: float) -> float:
+        ry1 = y1 + int(ya * bh)
+        ry2 = y1 + int(yb * bh)
+        band = img[ry1:ry2, cx1:cx2]
+        if band.size == 0:
+            return 0.0
+        hsv = cv2.cvtColor(band, cv2.COLOR_BGR2HSV)
+        s = hsv[:, :, 1]
+        v = hsv[:, :, 2]
+        black = (v < BLACK_V_MAX) & (s < BLACK_S_MAX)
+        return round(float(np.mean(black)), 3)
+
+    return black_frac(0.15, 0.55), black_frac(0.55, 0.92)
 
 
 def configure_logging() -> None:
@@ -147,11 +192,16 @@ def run_detection(args: argparse.Namespace) -> None:
 
             if result.boxes is not None and result.boxes.id is not None:
                 boxes = result.boxes
+                frame_img = result.orig_img  # BGR ndarray for clothing-darkness
                 for i in range(len(boxes)):
                     track_id = int(boxes.id[i].item())
                     conf = float(boxes.conf[i].item())
                     xyxy = boxes.xyxy[i].tolist()
                     bbox = [round(v, 1) for v in xyxy]
+
+                    top_dark, bot_dark = (0.0, 0.0)
+                    if frame_img is not None:
+                        top_dark, bot_dark = outfit_darkness(frame_img, xyxy)
 
                     record = {
                         "frame": orig_frame,
@@ -160,6 +210,8 @@ def run_detection(args: argparse.Namespace) -> None:
                         "bbox": bbox,
                         "confidence": round(conf, 4),
                         "video_ts_ms": video_ts_ms,
+                        "top_dark": top_dark,
+                        "bot_dark": bot_dark,
                     }
                     if args.camera:
                         record["camera"] = args.camera

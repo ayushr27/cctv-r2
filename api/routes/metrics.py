@@ -39,6 +39,12 @@ def get_metrics(
         groups.add(gid if gid else f"__solo_{p.get('visit_id', i)}")
     unique_groups = len(groups)
 
+    # staff_count = distinct employees detected in the window (track.staff_classified).
+    staff_count = len({
+        p["visit_id"]
+        for p in store.get_payloads("track.staff_classified", win_from, win_to)
+    })
+
     # peak_hour = IST hour with the most entries.
     hist = store.hour_histogram("visit.entered", win_from, win_to)
     peak_hour = max(hist, key=hist.get) if hist else None
@@ -60,6 +66,7 @@ def get_metrics(
         window={"from": win_from, "to": win_to},
         footfall=footfall,
         unique_groups=unique_groups,
+        staff_count=staff_count,
         peak_hour=peak_hour,
         avg_dwell_seconds=avg_dwell_seconds,
         conversion_rate=conv["conversion_rate"],

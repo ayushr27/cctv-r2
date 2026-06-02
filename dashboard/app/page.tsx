@@ -124,6 +124,30 @@ export default function LivePage() {
         />
       </section>
 
+      {/* Secondary store stats */}
+      <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <KpiCard
+          label="Store employees"
+          value={metrics ? String(metrics.staff_count) : "—"}
+          sub="staff detected (black uniform / behaviour)"
+        />
+        <KpiCard
+          label="Unique groups"
+          value={metrics ? String(metrics.unique_groups) : "—"}
+          sub="distinct shopping parties"
+        />
+        <KpiCard
+          label="Peak hour"
+          value={metrics?.peak_hour ?? "—"}
+          sub="busiest entry hour (IST)"
+        />
+        <KpiCard
+          label="Avg dwell"
+          value={metrics ? `${metrics.avg_dwell_seconds}s` : "—"}
+          sub="mean visit duration (staff excl.)"
+        />
+      </section>
+
       <section>
         <h2 className="mb-3 text-sm font-medium text-slate-300">Recent events</h2>
         <div className="rounded-xl border border-edge bg-panel divide-y divide-edge max-h-[420px] overflow-y-auto">

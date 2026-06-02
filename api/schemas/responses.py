@@ -11,6 +11,7 @@ class MetricsResponse(BaseModel):
     window: dict
     footfall: int
     unique_groups: int
+    staff_count: int = 0
     peak_hour: Optional[str]
     avg_dwell_seconds: float
     conversion_rate: Optional[float] = None

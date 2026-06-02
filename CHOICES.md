@@ -59,9 +59,20 @@ re-detecting (it's a post-pass over events). The thresholds are CLI-configurable
 the same code scales to full-day footage. **Clip adaptation (important):** the
 plan's literal thresholds (dwell >30 min, ≥3 zones, ≥2 cash passes) cannot fire on
 2-minute clips, so the "long dwell" signal is clip-relative — `dwell > 40 s` **or**
-`> 4× the per-camera median dwell`. On the sample footage this correctly surfaces 3
-staff (2 billing operators, 1 floor salesperson); with `--dwell-floor-s 1800
---zones-min 3` it reproduces the plan's full-day behavior exactly.
+`> 4× the per-camera median dwell`.
+
+**Black-uniform cue (added):** the store's staff wear an all-black uniform, so
+`detect.py` measures clothing darkness per person — the fraction of *black* pixels
+(low HSV Value **and** low Saturation, so dark-but-coloured customer clothing is
+excluded) in the torso and leg bands. A visit is staff if it reads all-black on top
+**and** bottom (median ≥ 0.85) **OR** trips ≥2 behavioural signals. This lifts the
+count from 3 (behaviour only) to **8** (5 near billing/CAM 5, 2 on CAM 1, 1 on CAM 2),
+each with the darkness in its evidence. **Honest limitation:** the footage is dim
+evening CCTV, where a brightness-only test flagged 46/69 visits — so the bar is
+deliberately strict (validated against the darkness distribution), the saturation
+gate is what makes it work, and **"no bags" was not implemented** (unreliable without
+a dedicated bag detector). It remains a heuristic: a customer fully in black may be
+miscounted. All thresholds are CLI flags (`--dark-threshold`).
 
 ## 6. POS ↔ CV time-bucket join over identity matching
 

@@ -141,6 +141,9 @@ class TrackState:
     zones_visited: Set[str] = field(default_factory=set)
     ended: bool = False
     merged: bool = False  # adopted by a re-entry continuation
+    # Per-detection clothing-darkness samples (staff wear all-black).
+    top_dark_samples: List[float] = field(default_factory=list)
+    bot_dark_samples: List[float] = field(default_factory=list)
 
 
 def gate_reentry(
@@ -284,12 +287,23 @@ class EventDeriver:
             self._emit_exited_zone(st, zone, ts, dwell)
         st.inside_zones.clear()
         start = st.entry_ts or st.first_seen_ts
+
+        def _median(xs: List[float]) -> float:
+            if not xs:
+                return 0.0
+            s = sorted(xs)
+            n = len(s)
+            mid = n // 2
+            return round(s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2, 3)
+
         self.events.append(VisitEnded(
             event_id=self._new_id(), ts=ts, camera=self.camera,
             payload=VisitEndedPayload(
                 visit_id=st.visit_id, track_id=st.track_id,
                 total_dwell_ms=_ms(ts - start),
-                zones_visited=sorted(st.zones_visited), reason=reason),
+                zones_visited=sorted(st.zones_visited), reason=reason,
+                outfit_dark_top=_median(st.top_dark_samples),
+                outfit_dark_bot=_median(st.bot_dark_samples)),
         ))
         st.ended = True
 
@@ -302,7 +316,9 @@ class EventDeriver:
             if (now - st.last_seen_ts).total_seconds() > self.end_timeout_s:
                 self._emit_ended(st, st.last_seen_ts, "track_lost")
 
-    def process_detection(self, frame: int, ts: datetime, track_id: int, bbox: Sequence[float]):
+    def process_detection(self, frame: int, ts: datetime, track_id: int,
+                          bbox: Sequence[float], top_dark: float = 0.0,
+                          bot_dark: float = 0.0):
         pos = feet_point(bbox)
 
         # Frame advanced -> sweep for tracks that have gone quiet.
@@ -326,6 +342,8 @@ class EventDeriver:
                     inside_zones=set(reused.inside_zones),
                     zone_enter_ts=dict(reused.zone_enter_ts),
                     zones_visited=set(reused.zones_visited),
+                    top_dark_samples=list(reused.top_dark_samples),
+                    bot_dark_samples=list(reused.bot_dark_samples),
                 )
             else:
                 st = TrackState(
@@ -337,6 +355,11 @@ class EventDeriver:
                     st.entered = True
                     st.entry_ts = ts
             self.tracks[track_id] = st
+
+        # Record clothing-darkness samples for this detection (skip empty crops).
+        if top_dark or bot_dark:
+            st.top_dark_samples.append(top_dark)
+            st.bot_dark_samples.append(bot_dark)
 
         prev_pos = st.last_position
 
@@ -443,7 +466,9 @@ def main():
                   key=lambda r: (r["frame"], r["track_id"]))
     for r in rows:
         ts = datetime.fromisoformat(r["ts"])
-        deriver.process_detection(r["frame"], ts, r["track_id"], r["bbox"])
+        deriver.process_detection(
+            r["frame"], ts, r["track_id"], r["bbox"],
+            top_dark=r.get("top_dark", 0.0), bot_dark=r.get("bot_dark", 0.0))
         n_det += 1
 
     events = deriver.finalize()

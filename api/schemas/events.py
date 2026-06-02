@@ -64,12 +64,16 @@ class VisitEndedPayload(BaseModel):
     total_dwell_ms: int
     zones_visited: List[str] = Field(default_factory=list)
     reason: VisitEndReason
+    outfit_dark_top: float = 0.0
+    outfit_dark_bot: float = 0.0
 
 
 class StaffEvidence(BaseModel):
     total_dwell_ms: int
     zones_count: int
     cash_passes: int
+    outfit_dark_top: float = 0.0
+    outfit_dark_bot: float = 0.0
 
 
 class TrackStaffClassifiedPayload(BaseModel):

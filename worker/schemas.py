@@ -64,12 +64,18 @@ class VisitEndedPayload(BaseModel):
     total_dwell_ms: int
     zones_visited: List[str] = Field(default_factory=list)
     reason: VisitEndReason
+    # Median clothing darkness over the visit's detections (0–1); a staff cue
+    # (staff wear all-black). Default 0.0 keeps older event logs valid.
+    outfit_dark_top: float = 0.0
+    outfit_dark_bot: float = 0.0
 
 
 class StaffEvidence(BaseModel):
     total_dwell_ms: int
     zones_count: int
     cash_passes: int
+    outfit_dark_top: float = 0.0
+    outfit_dark_bot: float = 0.0
 
 
 class TrackStaffClassifiedPayload(BaseModel):

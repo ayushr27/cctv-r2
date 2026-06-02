@@ -66,6 +66,10 @@ DEFAULT_DWELL_FLOOR_S = 40.0      # absolute "long dwell" floor (seconds)
 DEFAULT_DWELL_MEDIAN_MULT = 4.0   # OR > this * per-camera median dwell
 DEFAULT_ZONES_MIN = 2             # multi-zone signal (clips have <=3 zones/cam)
 DEFAULT_MIN_SIGNALS = 2           # >= this many signals => staff
+# Strict: on this dim evening footage most clothing reads somewhat dark, so the
+# black-outfit bar is high (validated against the darkness distribution — 0.85
+# isolates ~5 all-black staff vs 46 at 0.5). Lower it for brighter footage.
+DEFAULT_DARK_THRESHOLD = 0.85     # median top&bot black-fraction >= this => black outfit
 
 
 def configure_logging() -> None:
@@ -83,7 +87,7 @@ def configure_logging() -> None:
 
 class VisitAgg:
     __slots__ = ("visit_id", "track_id", "camera", "ts", "total_dwell_ms",
-                 "zones_count", "cash_passes")
+                 "zones_count", "cash_passes", "dark_top", "dark_bot")
 
     def __init__(self, visit_id):
         self.visit_id = visit_id
@@ -93,6 +97,8 @@ class VisitAgg:
         self.total_dwell_ms = 0
         self.zones_count = 0
         self.cash_passes = 0
+        self.dark_top = 0.0
+        self.dark_bot = 0.0
 
 
 def aggregate_visits(events: List) -> Dict[str, VisitAgg]:
@@ -118,6 +124,8 @@ def aggregate_visits(events: List) -> Dict[str, VisitAgg]:
             v.total_dwell_ms = p.total_dwell_ms
             v.zones_count = len(p.zones_visited)
             v.ts = e.ts
+            v.dark_top = getattr(p, "outfit_dark_top", 0.0)
+            v.dark_bot = getattr(p, "outfit_dark_bot", 0.0)
         elif e.type == "visit.approached_cash":
             v.cash_passes += 1
     return visits
@@ -138,8 +146,17 @@ def classify(
     dwell_median_mult: float,
     zones_min: int,
     min_signals: int,
+    dark_threshold: float = DEFAULT_DARK_THRESHOLD,
 ) -> List[str]:
-    """Return the list of visit_ids classified as staff."""
+    """
+    Return the list of visit_ids classified as staff.
+
+    Staff = black_outfit OR (>= min_signals behavioral signals), where
+    black_outfit = consistently all-black top AND bottom (median darkness over
+    the visit's detections >= dark_threshold). The store's staff wear a black
+    uniform; the behavioral fallback still catches counter operators / floor
+    staff whose outfit reads ambiguously on low-res CCTV.
+    """
     medians = per_camera_median_dwell(visits)
     floor_ms = dwell_floor_s * 1000
     staff: List[str] = []
@@ -155,8 +172,10 @@ def classify(
         multi_zone = v.zones_count >= zones_min
         cash_anchor = v.cash_passes >= 1 and long_dwell
 
-        signals = sum([long_dwell, multi_zone, cash_anchor])
-        if signals >= min_signals:
+        black_outfit = v.dark_top >= dark_threshold and v.dark_bot >= dark_threshold
+        behavioral = sum([long_dwell, multi_zone, cash_anchor]) >= min_signals
+
+        if black_outfit or behavioral:
             staff.append(vid)
     return staff
 
@@ -178,6 +197,8 @@ def build_staff_events(visits: Dict[str, VisitAgg], staff_ids: List[str]) -> Lis
                         total_dwell_ms=v.total_dwell_ms,
                         zones_count=v.zones_count,
                         cash_passes=v.cash_passes,
+                        outfit_dark_top=v.dark_top,
+                        outfit_dark_bot=v.dark_bot,
                     ),
                 ),
             )
@@ -196,7 +217,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--zones-min", type=int, default=DEFAULT_ZONES_MIN,
                    help="Multi-zone signal threshold (full-day: 3)")
     p.add_argument("--min-signals", type=int, default=DEFAULT_MIN_SIGNALS,
-                   help="Signals required to classify as staff")
+                   help="Behavioral signals required to classify as staff")
+    p.add_argument("--dark-threshold", type=float, default=DEFAULT_DARK_THRESHOLD,
+                   help="Median top&bottom clothing darkness >= this => black outfit")
     return p.parse_args()
 
 
@@ -213,6 +236,7 @@ def main():
         dwell_median_mult=args.dwell_median_mult,
         zones_min=args.zones_min,
         min_signals=args.min_signals,
+        dark_threshold=args.dark_threshold,
     )
     staff_events = build_staff_events(visits, staff_ids)
 

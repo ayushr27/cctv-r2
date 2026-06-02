@@ -41,7 +41,8 @@ DEFAULTS = dict(
 )
 
 
-def agg(vid, *, camera="cam1", dwell_ms=0, zones=0, cash=0, ended=True, track_id=1):
+def agg(vid, *, camera="cam1", dwell_ms=0, zones=0, cash=0, ended=True,
+        track_id=1, dark_top=0.0, dark_bot=0.0):
     v = VisitAgg(vid)
     v.camera = camera
     v.track_id = track_id
@@ -49,7 +50,30 @@ def agg(vid, *, camera="cam1", dwell_ms=0, zones=0, cash=0, ended=True, track_id
     v.zones_count = zones
     v.cash_passes = cash
     v.ts = T0 if ended else None
+    v.dark_top = dark_top
+    v.dark_bot = dark_bot
     return v
+
+
+def test_black_outfit_alone_classifies_staff():
+    # all-black top+bottom, no behavioral signals at all => staff via outfit
+    visits = {"s1": agg("s1", dwell_ms=1_000, zones=0, cash=0,
+                        dark_top=0.9, dark_bot=0.9)}
+    assert classify(visits, **DEFAULTS) == ["s1"]
+
+
+def test_dark_top_only_is_not_black_outfit():
+    # black top but light bottom (e.g. black hair + jeans) => NOT staff
+    visits = {"c1": agg("c1", dwell_ms=1_000, zones=0, cash=0,
+                        dark_top=0.95, dark_bot=0.2)}
+    assert classify(visits, **DEFAULTS) == []
+
+
+def test_dark_below_threshold_is_not_staff():
+    # both dark but under the 0.85 default => NOT staff (dim footage guard)
+    visits = {"c1": agg("c1", dwell_ms=1_000, zones=0, cash=0,
+                        dark_top=0.7, dark_bot=0.7)}
+    assert classify(visits, **DEFAULTS) == []
 
 
 def test_staff_long_dwell_plus_multi_zone():

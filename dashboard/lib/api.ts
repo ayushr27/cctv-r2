@@ -11,6 +11,7 @@ export interface Metrics {
   window: { from: string | null; to: string | null };
   footfall: number;
   unique_groups: number;
+  staff_count: number;
   peak_hour: string | null;
   avg_dwell_seconds: number;
   conversion_rate: number | null;
