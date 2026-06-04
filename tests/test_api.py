@@ -28,9 +28,16 @@ def _resolve(*rel, container):
 
 
 EVENTS = _resolve("events", "events.sample.jsonl", container="/events/events.sample.jsonl")
-CSV = _resolve(
-    "data", "pos", "Brigade_Bangalore_10_April_26.csv",
-    container="/data/pos/Brigade_Bangalore_10_April_26.csv",
+# Real licensed export locally; otherwise the committed synthetic fixture (CI),
+# so the POS-dependent KPIs still have bills to compute from.
+_FIXTURE_POS = os.path.join(os.path.dirname(__file__), "fixtures", "pos_sample.csv")
+CSV = next(
+    (p for p in (
+        os.path.join(os.path.dirname(__file__), "..", "data", "pos", "Brigade_Bangalore_10_April_26.csv"),
+        "/data/pos/Brigade_Bangalore_10_April_26.csv",
+        _FIXTURE_POS,
+    ) if os.path.exists(p)),
+    _FIXTURE_POS,
 )
 
 

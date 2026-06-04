@@ -13,25 +13,31 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "api"))
 
 from services.pos_join import PosJoin  # noqa: E402
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
+_HERE = os.path.dirname(__file__)
+_REAL_REPO = os.path.join(_HERE, "..", "data", "pos", "Brigade_Bangalore_10_April_26.csv")
+_REAL_CONTAINER = "/data/pos/Brigade_Bangalore_10_April_26.csv"
+# Fabricated, committed fixture used when the licensed export is absent (CI).
+_FIXTURE = os.path.join(_HERE, "fixtures", "pos_sample.csv")
 
-def _resolve(*rel, container):
-    """Repo-relative path (CI layout) with a container-mount fallback."""
-    p = os.path.join(os.path.dirname(__file__), "..", *rel)
-    return p if os.path.exists(p) else container
-
-
-CSV_PATH = _resolve(
-    "data", "pos", "Brigade_Bangalore_10_April_26.csv",
-    container="/data/pos/Brigade_Bangalore_10_April_26.csv",
+HAS_REAL_POS = os.path.exists(_REAL_REPO) or os.path.exists(_REAL_CONTAINER)
+requires_real_pos = pytest.mark.skipif(
+    not HAS_REAL_POS,
+    reason="licensed Brigade POS CSV is gitignored/absent; synthetic fixture has no exact-value parity",
 )
 
+# Behavioural tests use whichever POS CSV is available (real locally, synthetic on CI).
+CSV_PATH = next((p for p in (_REAL_REPO, _REAL_CONTAINER, _FIXTURE) if os.path.exists(p)), _FIXTURE)
 
+
+@requires_real_pos
 def test_real_csv_invoice_and_customer_counts():
     pos = PosJoin()
     n = pos.load(CSV_PATH)
@@ -44,6 +50,7 @@ def test_real_csv_invoice_and_customer_counts():
     assert len(customers) == 21, f"expected 21 unique customers, got {len(customers)}"
 
 
+@requires_real_pos
 def test_total_revenue_matches_known_value():
     pos = PosJoin()
     pos.load(CSV_PATH)

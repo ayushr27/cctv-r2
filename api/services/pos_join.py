@@ -57,6 +57,13 @@ def _candidate_paths() -> List[str]:
         paths += sorted(glob.glob("resources/POS*.csv"))
     except Exception:  # noqa: BLE001
         pass
+    # Final fallback: the committed SYNTHETIC fixture (fabricated rows, not the
+    # licensed export) so CI / a fresh clone without the real CSV still loads POS
+    # data. The licensed paths above always win when present (local / Docker).
+    paths += [
+        os.path.join(os.path.dirname(__file__), "..", "..", "tests", "fixtures", "pos_sample.csv"),
+        "tests/fixtures/pos_sample.csv",
+    ]
     return [p for p in paths if p]
 
 

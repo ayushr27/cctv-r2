@@ -38,3 +38,7 @@ dashboard/public/store2_layout.png
 dashboard/public/store_frame.jpg
 .DS_Store
 **/.DS_Store
+
+# ...but DO keep the SYNTHETIC POS fixture (fabricated rows, not the licensed
+# export) so CI has POS data to load when the real CSV is absent.
+!tests/fixtures/pos_sample.csv
