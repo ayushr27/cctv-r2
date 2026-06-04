@@ -1,0 +1,29 @@
+# Render Blueprint — hosts the FastAPI service only (the worker stays local;
+# ultralytics+torch+opencv exceed the free tier's 512MB / 0.1 vCPU).
+#
+# The image (api/Dockerfile.deploy) bakes in COMMITTED, licensing-clean demo data
+# only — the legacy event sample, the canonical seed, and the SYNTHETIC POS
+# fixture. No licensed footage / layouts / POS export is ever deployed.
+services:
+  - type: web
+    name: purplle-store-intel-api
+    runtime: docker
+    repo: https://github.com/ayushr27/cctv-r2
+    branch: main
+    dockerfilePath: ./api/Dockerfile.deploy
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # *.vercel.app is matched by allow_origin_regex in api/main.py regardless,
+      # so preview deploys work too; set the exact prod origin here if you prefer.
+      - key: ALLOWED_ORIGINS
+        value: "https://*.vercel.app"
+      - key: EVENTS_FILE
+        value: /app/events/events.sample.jsonl
+      - key: CANONICAL_EVENTS_FILE
+        value: /app/events/canonical.seed.jsonl
+      - key: POS_CSV
+        value: /app/data/pos/pos_transactions.csv

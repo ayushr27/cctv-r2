@@ -11,7 +11,7 @@ vary with the query window.
 
 ## Live demo
 
-> _Placeholders — filled in after the optional Phase 11 deploy._
+> _Fill these in after the deploy (below)._
 >
 > - **Dashboard (Vercel):** `https://<project>.vercel.app`
 > - **API (Render):** `https://<service>.onrender.com`
@@ -19,6 +19,40 @@ vary with the query window.
 > ⚠️ Render's free tier sleeps after 15 min idle — the first request takes ~45 s to
 > wake up. **For evaluation, please use `docker compose up`** (below); the hosted
 > demo is supplementary.
+>
+> 🔒 **The hosted build ships NO licensed data.** The challenge footage, store
+> layouts, and the real POS export are gitignored and never deployed. The public
+> API serves the committed event sample + canonical seed and a **synthetic POS
+> fixture** (`tests/fixtures/pos_sample.csv`), so revenue/conversion on the live
+> URL are clearly-synthetic demo numbers; the layout heatmap falls back to bars and
+> footage clips show their text reference. Run locally (with the licensed inputs on
+> disk) for full fidelity.
+
+### Deploy it yourself (Render API + Vercel dashboard, both free)
+
+Configs are committed: [`render.yaml`](render.yaml), [`api/Dockerfile.deploy`](api/Dockerfile.deploy),
+[`dashboard/.env.production`](dashboard/.env.production). The image is verified at ~280 MB (no
+pandas/torch) and answers every endpoint. CORS already allows `*.vercel.app`.
+
+**API → Render**
+1. Push this repo to GitHub (already at `github.com/ayushr27/cctv-r2`).
+2. [render.com](https://render.com) → **New → Blueprint** → connect the repo. Render reads
+   `render.yaml` and provisions `purplle-store-intel-api` (Docker, free, region `singapore`).
+3. Wait ~5 min for the first build; watch the log for `Application startup complete`.
+4. Verify: `curl https://<service>.onrender.com/health` then
+   `…/stores/STORE_BLR_002/metrics` (first hit after idle takes ~45 s).
+
+**Dashboard → Vercel**
+1. [vercel.com](https://vercel.com) → **New Project** → import the same repo.
+2. **Root Directory:** `dashboard/` · Framework: Next.js (auto-detected).
+3. **Environment Variable:** `NEXT_PUBLIC_API_URL = https://<service>.onrender.com`
+   (your Render URL from above).
+4. **Deploy** → URL is `https://<project>.vercel.app`. First data click may take ~45 s if Render is cold.
+
+**Finally:** paste both URLs into the placeholders above, commit, push.
+
+> Worker stays local — `ultralytics + torch + opencv` (~1 GB) exceed the free tier; you ingest
+> footage on your laptop and the committed seed/sample carry the deployed demo.
 
 ---
 

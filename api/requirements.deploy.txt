@@ -1,0 +1,10 @@
+# Lean RUNTIME deps for the hosted API (Render free tier, 512MB).
+# Excludes pandas (only referenced in a comment, never imported) and the test
+# stack (pytest/httpx) — keeps the image small and the build off the OOM line.
+# The full dev set lives in api/requirements.txt.
+fastapi==0.115.4
+uvicorn[standard]==0.32.0
+pydantic==2.9.2
+structlog==24.4.0
+prometheus-client==0.21.0
+python-ulid==3.0.0

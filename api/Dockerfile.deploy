@@ -1,0 +1,32 @@
+# Deployment image for Render (repo-root build context, set in render.yaml).
+#
+# Why a SEPARATE Dockerfile from api/Dockerfile:
+#   * api/Dockerfile builds from context ./api (compose) and bind-mounts events/
+#     + data/ at runtime — it deliberately cannot see repo-root events/ or data/.
+#   * This image builds from the repo root so it can bake in the COMMITTED,
+#     licensing-clean demo data: the legacy event sample, the canonical seed, and
+#     the SYNTHETIC POS fixture. The licensed footage / layouts / POS export are
+#     gitignored and NEVER enter this image — so the public URL ships no licensed
+#     data (revenue/conversion are clearly-synthetic demo numbers).
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Lean runtime deps (no pandas / no test stack) — fits the Render free tier.
+COPY api/requirements.deploy.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# API source (main.py, services/, routes/, schemas/, ...).
+COPY api/ .
+
+# Committed, non-licensed demo data: legacy sample (/metrics, /funnel) + canonical
+# seed (both stores power /stores/*) + synthetic POS (revenue/conversion demo).
+COPY events/events.sample.jsonl events/canonical.seed.jsonl /app/events/
+COPY tests/fixtures/pos_sample.csv /app/data/pos/pos_transactions.csv
+
+ENV EVENTS_FILE=/app/events/events.sample.jsonl \
+    CANONICAL_EVENTS_FILE=/app/events/canonical.seed.jsonl \
+    POS_CSV=/app/data/pos/pos_transactions.csv
+
+EXPOSE 8000
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
