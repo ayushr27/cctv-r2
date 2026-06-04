@@ -1,0 +1,32 @@
+# Build context for the repo-root deploy image (api/Dockerfile.deploy).
+# Keep it small: COPY only pulls api/, the event sample + canonical seed, the real
+# POS CSV, and the single billing clip — everything else is excluded so Render
+# doesn't upload ~1GB of footage/resources.
+.git
+.venv-api
+.venv
+node_modules
+dashboard
+worker
+**/__pycache__
+**/.pytest_cache
+.coverage
+htmlcov
+
+# Licensed / large inputs the image does NOT bake in
+resources/
+CCTV Footage/
+data/layout/
+data/frames/
+data/pos/pos_transactions.csv
+
+# Raw/intermediate events (only the committed sample + seed are deployed)
+events/STORE_*/
+events/raw_*.jsonl
+events/events_cam*.jsonl
+events/events.jsonl
+events/events.classified.jsonl
+
+# All sample clips EXCEPT the small billing clip bundled for playback
+data/samples/*
+!data/samples/billing.deploy.mp4

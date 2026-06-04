@@ -1,9 +1,9 @@
 # Render Blueprint — hosts the FastAPI service only (the worker stays local;
 # ultralytics+torch+opencv exceed the free tier's 512MB / 0.1 vCPU).
 #
-# The image (api/Dockerfile.deploy) bakes in COMMITTED, licensing-clean demo data
-# only — the legacy event sample, the canonical seed, and the SYNTHETIC POS
-# fixture. No licensed footage / layouts / POS export is ever deployed.
+# The image (api/Dockerfile.deploy) bakes in the event sample + canonical seed and
+# — per the full-fidelity deploy choice — the real Brigade POS export and one
+# billing clip, so the hosted API serves real revenue/conversion + clip playback.
 services:
   - type: web
     name: purplle-store-intel-api
@@ -26,4 +26,4 @@ services:
       - key: CANONICAL_EVENTS_FILE
         value: /app/events/canonical.seed.jsonl
       - key: POS_CSV
-        value: /app/data/pos/pos_transactions.csv
+        value: /app/data/pos/Brigade_Bangalore_10_April_26.csv
