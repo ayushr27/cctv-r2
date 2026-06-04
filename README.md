@@ -14,11 +14,11 @@ vary with the query window.
 > - **Dashboard (Vercel):** https://cctv-r2.vercel.app
 > - **API (Render):** https://purplle-store-intel-api.onrender.com
 >
-> ⚠️ Render's free tier sleeps after 15 min idle — the first request takes ~45 s to
+> Render's free tier sleeps after 15 min idle — the first request takes ~45 s to
 > wake up. **For evaluation, please use `docker compose up`** (below); the hosted
 > demo is supplementary.
 >
-> 🔒 **The hosted build ships NO licensed data.** The challenge footage, store
+> **The hosted build ships NO licensed data.** The challenge footage, store
 > layouts, and the real POS export are gitignored and never deployed. The public
 > API serves the committed event sample + canonical seed and a **synthetic POS
 > fixture** (`tests/fixtures/pos_sample.csv`), so revenue/conversion on the live
