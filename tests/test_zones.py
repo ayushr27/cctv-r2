@@ -1,3 +1,6 @@
+# PROMPT: "Test polygon zone containment, including boundary-inclusive points."
+# CHANGES MADE: Added an on-edge point and an outside point next to the boundary.
+
 """Unit tests for worker.events.point_in_zone + zones.json loading."""
 
 import json

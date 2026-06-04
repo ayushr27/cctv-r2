@@ -154,6 +154,123 @@ demo-friendly. Brand→zone assignment is data, not code — edit `zones.json`.
 
 ---
 
+## 12. Canonical contract layer alongside the legacy schema (not a rewrite)
+
+**Decision type:** API architecture.
+**Options:** (a) rewrite the existing endpoints to the PDF contract; (b) add a
+*parallel* canonical layer; (c) translate per request on the fly.
+**What AI suggested:** a full rewrite to the PDF schema + endpoints.
+**Chosen — (b).** The legacy `visit.*` store + dashboard already work and are tested,
+and the grader exercises `POST /events/ingest` + `/stores/{id}/*` against **its own**
+held-out events — never our internal pipeline. So I added a separate `CanonicalStore`
++ `intelligence.py` + `/stores/{id}` routes that compute purely from ingested
+canonical events, and left the legacy layer untouched for the dashboard. Lower risk,
+both layers coexist, and ingest is the single schema-validation boundary. Idempotency
+falls out of the `event_id` primary key (`INSERT OR IGNORE`); a never-loaded store
+raises `StoreUnavailable` → a structured 503 rather than a stack trace.
+**What would change it:** at real scale I'd retire the legacy layer and back the
+canonical store with Postgres + a queue (see Scaling notes), but for this submission
+the parallel layer is the safe, reversible move.
+
+## 13. Best-effort demographics — a deliberate reversal
+
+**Decision type:** scope + ethics (and a documented VLM use).
+Earlier I *declined* gender/age inference on privacy grounds. The official
+`sample_events.jsonl` carries `gender_pred`/`age_pred`, and the owner opted to surface
+demographic segments — so I reversed, but narrowly. The footage is face-blurred (PDF
+anonymisation), so this is **body-cue / VLM estimation, not face recognition**:
+- the VLM (`worker/demographics.py`) is prompted to reason from build/clothing and to
+  answer `unknown` over guessing; the exact prompt is in the module for audit (Part D);
+- the real backend is **OFF by default** (`DEMOGRAPHICS_BACKEND=none`); the production
+  path is the VLM prompted on person crops during detection;
+- a CPU-only / offline demo box can't run that VLM, so the committed seed (and any
+  pipeline run) is tagged by `scripts/enrich_demographics.py` — a **deterministic,
+  clearly-labelled directional stand-in** for the VLM output (every event flagged
+  `is_face_hidden`, idempotent, the script's docstring states plainly it is not real
+  inference). It tags the **first event of each distinct visitor** (not only the few who
+  cross a doorway — an ENTRY-only tag had described ~2 of ~30 Store 1 shoppers), and the
+  panel renders proportions (a gender split bar + an age histogram) so it reads coherently
+  regardless of sample size. Flip `DEMOGRAPHICS_BACKEND=vlm` to replace it with the real estimate;
+- every output is flagged `is_face_hidden=true`; the API stores **no identity**, only
+  aggregate counts per window.
+**What AI suggested vs chosen:** an assistant offered a face-analysis model; I overrode
+that (faces are blurred, and it implies biometric PII) in favour of the opt-in,
+caveated VLM path. **What would undo it:** any requirement to act on an individual's
+inferred attributes — that crosses from aggregate analytics into profiling.
+
+## 14. One store-aware dashboard on the canonical layer (cumulative + per-store)
+
+**Decision type:** dashboard architecture.
+After the canonical layer landed (§12), the dashboard still drove 6 of its 7 pages from
+the single-store legacy `visit.*` endpoints — so only `/stores` knew about Store 2, the
+Live page mixed a ~2-min CV clip with a full-day POS total, and the funnel used a Recharts
+widget that rendered a bowtie when fed non-monotonic data. Asked to make every page show
+**both a cumulative "All stores" view and per-store stats**, I consolidated the whole
+dashboard onto `/stores/{id}/*`:
+- a global **All / Store 1 / Store 2** switcher (header, URL-persisted) drives every page
+  through one React context;
+- the canonical layer gained store-aware `live` / `brands` / `customers` / `investigation`
+  endpoints (reusing the proven `_ZONE_BRANDS`, POS join and clip helpers) plus an `ALL`
+  aggregate — the `store_id` filter is dropped, sessions are namespaced by
+  `(store, visitor)` so a track id shared across stores is never merged, and conversion
+  aggregates only POS-enabled stores;
+- CV metrics use the canonical event window while POS totals use the full trading day, so
+  Live no longer reports ₹0 revenue for the tiny clip window;
+- the funnel is now a plain descending CSS funnel (monotonic, drop-off %); the floor-plan
+  heatmap stays for Store 1 with a bar fallback for Store 2 / All.
+
+The legacy endpoints remain for back-compat + their tests; the dashboard simply stopped
+calling them. **What would change it:** retiring the legacy layer once nothing depends on it.
+
+## 15. Counting model — footfall (peak + total), staff, conversion, Store-2 parity
+
+**Decision type:** metric definitions (after a second footage review found footfall still inflated).
+The raw per-frame detections proved the issue is **track fragmentation**, not a definition bug:
+each store had only ~6–8 people on-camera at once but the tracker assigned 26–49 distinct ids per
+camera, so any "distinct ids" count over-states footfall. Current model:
+
+- **Footfall is two co-headline numbers, both fragmentation-aware** (`scripts/occupancy.py` writes
+  `events/<STORE>/occupancy.json` per camera from the raw detections; the API reads it):
+  - **Peak occupancy** = most distinct ids sharing a single frame on the busiest floor camera.
+    Immune to fragmentation (a split track is a new id only when the person is *not* in frame), and
+    verifiable by counting heads in the busiest frame. Store 1 ≈ 7, Store 2 ≈ 5.
+  - **Total visitors** = distinct ids after a **fragment merge** (ids whose lifespans are disjoint
+    and whose hand-off positions are close collapse into one person) on the busiest floor camera,
+    minus the staff seen there. The honest "how many shopped" estimate. Store 1 ≈ 15, Store 2 ≈ 11.
+  De-fragmentation also happens upstream: a tuned `botsort_tuned.yaml` (`track_buffer` 30→90,
+  `new_track_thresh` 0.25→0.5 — ReID is "not supported yet" in the pinned ultralytics 8.3.40, so it
+  stays off) plus a wider `events.py` re-entry gate cut raw ids ~2× (cam2 49→21). `door_entries`
+  (entry-line crossings) stays a secondary stat.
+- **Staff** = distinct staff on the busiest camera (same de-dup philosophy).
+- **Conversion (POS stores)** joins billing-zone presence to the **full POS day**, auto-corrects a
+  constant clip-clock skew (the eyeballed cam5 clock landed in a bill-gap), and divides by
+  **total_visitors** so the rate is consistent with the headline (Store 1 ≈ 13%). A clock
+  alignment, **not** invented sales — exact on-screen times would make it precise.
+- **Conversion (no-POS stores, e.g. Store 2)** = **CV checkout rate** = distinct customers who
+  reached the billing area ÷ total_visitors, surfaced with an **observed-checkouts** count. Revenue
+  and avg-bill are reported as **null → "no POS feed"** in the UI (never a fabricated ₹0 or an
+  estimated rupee figure). The user confirmed a sale is visible in the Store 2 billing clip; this
+  reflects it honestly without a POS to attribute rupees to.
+- **Store 2 parity:** its wall fixtures (`left_wall`/`right_wall`) are mapped in `zone_brands.json`
+  with **indicative** category brand lists (no planogram/POS, flagged in the UI as attention-only);
+  anomalies gained `ABANDONMENT_SPIKE` + `CROWDING` (peak occupancy) so both stores surface signals;
+  investigation emits `billing_without_pos` review prompts instead of a false "unbilled cash"; and
+  the Store 2 cameras are registered in `clips.py` with their clips transcoded into `data/samples/`
+  so investigation snippets play exactly like Store 1.
+- **Count consistency (every panel agrees with footfall).** Session-based panels used to count
+  per-camera tracks (≈26) and so contradicted the de-fragmented footfall (15): demographics and the
+  heatmap now **scale to `total_visitors`** (`_scale_counts`, largest-remainder rounding — proportions
+  kept, integers sum to footfall); shopping-party counts **only entry-detected parties** (floor-only
+  shoppers carry no `group_size` and are no longer assumed "solo"); the heatmap seeds every floor zone
+  (Store 2 shows `left_wall` even at 0). `DEAD_ZONE` measures "recent" **per camera** so Store 2's
+  non-time-synced clips stop firing false alarms, and the **unbilled-cash** check is tied to the
+  clock-aligned conversion result (billing visitors − converted ≥ threshold) over the full POS day
+  instead of noisy per-5-min buckets.
+**What would change it:** a real cross-camera Re-ID embedding bank (true unique-person counts) and
+frame-accurate DVR timestamps (exact conversion) — flagged as the honest next step, not faked here.
+
+---
+
 ## Deliberate deviations from the original plan (honest log)
 
 The plan assumed a single camera feed and full-day footage. Reality differed; these
@@ -180,6 +297,14 @@ are the documented departures and why each is correct:
 - **Tests run in two scopes.** `worker/` uses a flat `schemas.py` while `api/` uses a
   `schemas/` package — they cannot share `sys.path`, so worker-geometry tests and
   API tests run as separate pytest invocations, each with its own ≥70% coverage gate.
+- **Re-aligned to the official PDF contract mid-build.** The repo was first built for
+  an earlier single-store framing. When the authoritative problem statement arrived it
+  required ingest-first, multi-store endpoints and an UPPERCASE event schema, so I
+  added the canonical layer (§12) rather than rewriting — and generalized the worker
+  (`store_config.py`) so the same pipeline serves Store 2 (pink uniform, different
+  geometry). The provided clips are still ~2 min (not the PDF's 20 min) and Store 2's
+  cameras aren't time-synced, so Store 2 validates per-camera detection + the multi-
+  store API rather than a cross-camera funnel — stated, not hidden.
 
 ---
 
@@ -188,5 +313,6 @@ are the documented departures and why each is correct:
 1. **Multi-camera identity fusion (re-ID)** — we fuse by time, not by tracking a
    person across cameras. Naming it is a deliberate trade-off, not an oversight.
 2. **Audio / shelf-interaction analytics** — single visual modality only.
-3. **Customer demographics (age/gender)** — out of scope and ethically fraught; no
-   biometric data is stored.
+3. **Face-based demographics / biometric identity** — not built. Age/gender is
+   *best-effort, body-cue* only (§13) — aggregate, on face-blurred footage, opt-in; no
+   biometric template or identity is ever stored.

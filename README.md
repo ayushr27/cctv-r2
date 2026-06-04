@@ -26,14 +26,30 @@ vary with the query window.
 
 ```bash
 git clone <repo-url> && cd cctv-r2
-docker compose up -d                      # api :8000, dashboard :3000
-curl 'http://localhost:8000/metrics'      # real data from the committed sample
+docker compose up -d                                       # api :8000, dashboard :3000
+curl 'http://localhost:8000/stores/STORE_BLR_002/metrics'  # acceptance-gate endpoint
+curl 'http://localhost:8000/health'                        # per-store feed status
 ```
 
-`/metrics` returns within seconds — the API loads a committed
-`events/events.sample.jsonl` (202 real events from the CCTV clips) on startup, so
-**no ingest step is needed for a fresh clone**. Open the dashboard at
-<http://localhost:3000>.
+The API loads a committed canonical seed (`events/canonical.seed.jsonl`, derived from
+the real CCTV clips) on startup, so **`/stores/STORE_BLR_002/metrics` returns real data
+on a fresh clone — no ingest step required** (acceptance gate #2/#4). Open the dashboard
+at <http://localhost:3000>.
+
+**Ingest your own events** (PDF `POST /events/ingest` — batch ≤ 500, idempotent by
+`event_id`, partial success on malformed rows, accepts the canonical *or* the
+`sample_events.jsonl` shape):
+
+```bash
+# a single canonical event (the body is a JSON array, or {"events":[...]}):
+curl -X POST localhost:8000/events/ingest -H 'Content-Type: application/json' -d '[{
+  "event_id":"e1","store_id":"STORE_BLR_002","camera_id":"cam3","visitor_id":"VIS_1",
+  "event_type":"ENTRY","timestamp":"2026-04-10T14:40:00Z","is_staff":false,"confidence":0.9}]'
+```
+
+The provided `sample_events.jsonl` is JSONL; wrap its lines in a JSON array (or POST in
+batches) and the tolerant normalizer maps its lowercase `entry`/`zone_entered`/
+`queue_*` shape onto the canonical schema.
 
 **Prove outputs vary with input** (the integrity check — different windows, different numbers):
 
@@ -44,7 +60,30 @@ curl 'http://localhost:8000/metrics?from=2026-04-10T19:00&to=2026-04-10T21:00'
 
 ---
 
-## Endpoints
+## Scoring-contract endpoints (PDF)
+
+These are the endpoints the automated harness checks — **multi-store** and
+**ingest-first**: `POST` events, then query any `store_id`.
+
+| Endpoint | What it returns |
+| :------- | :-------------- |
+| `POST /events/ingest` | Accept a batch (≤ 500) of canonical *or* sample-shaped events. Idempotent by `event_id`; partial success → `{received, accepted, duplicates, rejected[]}`; never 5xx on bad rows. |
+| `GET /stores/{id}/metrics?from=&to=` | unique visitors (sessions, staff-excluded, re-entry-deduped), conversion rate, avg dwell/zone, queue depth, abandonment rate, demographics. Zero-traffic safe (200 + zeros, never 404). |
+| `GET /stores/{id}/funnel` | Entry → Zone → Billing Queue → Purchase, counts + drop-off %. Session-unit; re-entries not double-counted. |
+| `GET /stores/{id}/heatmap` | per-zone visit frequency + avg dwell, normalized 0–100, with a `data_confidence` flag (< 20 sessions). |
+| `GET /stores/{id}/anomalies` | `QUEUE_SPIKE` / `CONVERSION_DROP` / `DEAD_ZONE` with severity `INFO/WARN/CRITICAL` + a `suggested_action`. |
+| `GET /health` | per-store last-event timestamp + lag, with a `STALE_FEED` warning when a feed lags > 10 min. |
+
+Stores: **`STORE_BLR_002`** (Store 1, Brigade Road; POS-joined) and **`STORE_BLR_009`**
+(Store 2, pink-uniform staff, no POS). Any ingested `store_id` is also queryable.
+
+```bash
+curl 'http://localhost:8000/stores/STORE_BLR_002/funnel'
+curl 'http://localhost:8000/stores/STORE_BLR_002/anomalies'
+curl 'http://localhost:8000/stores/STORE_BLR_002/heatmap'
+```
+
+## Endpoints (dashboard — also live)
 
 Every endpoint accepts `from` / `to` ISO-8601 query params (default: full
 event+POS range).
@@ -76,21 +115,33 @@ open http://localhost:8000/docs
 
 ## Dashboard
 
-Six pages, 5-second polling (dark mode):
+Seven pages, 5-second polling (dark mode). A global **All stores / Store 1 / Store 2**
+switcher in the header drives every page (URL-persisted): each page shows the cumulative
+view *or* per-store stats, all from the canonical `/stores/{id}/*` layer.
 
-- **Live** — footfall / conversion / avg-bill / revenue + store-employees / groups /
-  peak-hour / avg-dwell KPI cards, and a recent-events feed.
-- **Funnel** — Recharts conversion funnel + a zone heatmap over the real store
-  floor plan, with per-zone brand revenue (zone footfall joined to POS sales).
+- **Live** — two co-headline footfall KPIs (**peak occupancy** = people on the busiest
+  camera at once, fragmentation-proof; **total visitors** = de-fragmented shoppers) +
+  conversion / avg-bill / revenue (POS full day) + store-employees / avg-dwell / peak-hour /
+  queue-depth, a best-effort demographics panel (gender split + age histogram), and a
+  recent-events feed. Store 2 (no POS) shows a **CV checkout rate** + observed checkouts and
+  marks revenue/avg-bill "no POS feed" (no invented rupees).
+- **Stores** — the PDF-contract KPIs per store: peak occupancy + total visitors, conversion,
+  abandonment, funnel, heatmap, demographics, anomalies.
+- **Funnel** — a descending conversion funnel (Entry → Zone → Billing → Purchase, with
+  drop-off %) + a zone heatmap over the real Store 1 floor plan (bar fallback for Store 2 /
+  All).
 - **Brands** — per brand-stand engagement: customer attention vs. POS sales,
   ₹/visit & ₹/attention-minute efficiency, top products sold, and a
-  "browsed-but-not-bought" merchandising signal.
+  "browsed-but-not-bought" merchandising signal. Store 2 (no POS) shows attention only.
 - **Customers** — non-demographic segments: solo vs group shoppers, new vs
-  repeat customers, basket composition. No gender/age inference.
-- **Anomalies** — severity-colored timeline with expandable evidence.
-- **Investigation** — loss-prevention review prompts (camera + timestamp + clip
-  reference). Privacy-preserving: behavioural flags only, no identity stored. Pull
-  the secured footage for a flag with `make clip CAM=cam5 AT=<sec> PAD=15`.
+  repeat customers, basket composition.
+- **Anomalies** — operational detectors for **both stores** (queue spike, conversion drop,
+  abandonment spike, crowding/peak-occupancy, dead zone) with severity + suggested action.
+- **Investigation** — loss-prevention review prompts (camera + timestamp + playable clip)
+  for **both stores** — clicking a Store 2 log plays its CCTV snippet just like Store 1.
+  Privacy-preserving: behavioural flags only, no identity stored. POS stores flag unbilled
+  cash approaches; no-POS stores (Store 2) surface billing activity for clip review. Pull the
+  secured footage for a flag with `make clip CAM=cam5 AT=<sec> PAD=15`.
 
 _Screenshots:_ `docs/live.png` · `docs/funnel.png` · `docs/anomalies.png` _(add before submission)._
 
@@ -99,9 +150,23 @@ _Screenshots:_ `docs/live.png` · `docs/funnel.png` · `docs/anomalies.png` _(ad
 ## Full ingestion path (process your own video)
 
 Ingest is offline and **multi-camera by role** — each camera is assigned the funnel
-stage it can observe (CAM 3 = footfall, CAM 1/2 = browse, CAM 5 = cash). Source
-clips are H.265 and live outside the mounted `data/` dir, so transcode them in
-first:
+stage it can observe. **One command per store** runs the whole pipeline
+(transcode → detect → events → staff-classify → canonical → optional ingest):
+
+```bash
+# Store 1 (black-uniform staff) and Store 2 (pink-uniform staff):
+docker compose run --rm worker bash scripts/run_pipeline.sh STORE_BLR_002 "resources/Store 1"
+docker compose run --rm worker bash scripts/run_pipeline.sh STORE_BLR_009 "resources/Store 2" http://api:8000
+```
+
+`run_pipeline.sh` writes `events/<store>/canonical.jsonl`; the trailing URL (optional)
+POSTs the canonical events to `/events/ingest` in batches of 500, so the dashboard +
+`/stores/{id}/*` update live. Camera→role + uniform colour live in
+`worker/store_config.py` — adding a store is a config entry. (Store 2's clips aren't
+time-synced across cameras, so it's per-camera; see CHOICES.)
+
+The manual per-camera steps (handy for re-calibrating one feed) are below. Source
+clips are H.265, so transcode them into the mounted `data/` dir first:
 
 ```bash
 # 1. Transcode each camera to H.264 into the mounted data dir
@@ -136,9 +201,11 @@ make test-worker   # worker geometry/zones/re-entry/staff tests, 70% gate
 ```
 
 Tests run in **two scopes** because `worker/` (flat `schemas.py`) and `api/`
-(`schemas/` package) can't share a `sys.path` — see CHOICES.md. 43 tests total;
-worker ≥78%, api services ≥89% coverage. CI (`.github/workflows/ci.yml`) runs both
-on push and PR.
+(`schemas/` package) can't share a `sys.path` — see CHOICES.md. 85 tests total;
+worker ≥79%, api services ≥90% coverage (incl. ingest idempotency, partial success,
+the 500-batch cap, all-staff exclusion, zero-purchase, and re-entry in the funnel).
+Each test file carries a `# PROMPT:` / `# CHANGES MADE:` block (Part D). CI
+(`.github/workflows/ci.yml`) runs both scopes on push and PR.
 
 Optional Prometheus monitoring: uncomment the `prometheus` service in
 `docker-compose.yml` (scrapes `api:8000/internal/metrics`, UI on :9090).

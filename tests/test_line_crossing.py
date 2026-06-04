@@ -1,3 +1,6 @@
+# PROMPT: "Test entry-line crossing geometry: proper segment intersection plus the directional in/out rule."
+# CHANGES MADE: Added shared-endpoint (touch, not cross) and parallel cases the model missed.
+
 """Unit tests for worker.events.cross_line (oriented line-crossing)."""
 
 import os

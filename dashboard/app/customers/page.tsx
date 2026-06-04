@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCustomers, type CustomerSegments } from "../../lib/api";
-import { Card, PageHeader, StatCard, Skeleton, ErrorBanner } from "../../components/ui";
+import { getStoreCustomers, storeLabel, type StoreCustomers } from "../../lib/api";
+import { useStore } from "../../components/StoreContext";
+import { Card, PageHeader, StatCard, NoDataStat, Skeleton, ErrorBanner } from "../../components/ui";
 
 const POLL_MS = 5000;
 
@@ -33,15 +34,17 @@ function SplitCard({ label, a, aLabel, b, bLabel, loading }: {
 }
 
 export default function CustomersPage() {
-  const [seg, setSeg] = useState<CustomerSegments | null>(null);
+  const { store } = useStore();
+  const [seg, setSeg] = useState<StoreCustomers | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
+    setLoading(true);
     const tick = async () => {
       try {
-        const r = await getCustomers();
+        const r = await getStoreCustomers(store);
         if (!alive) return;
         setSeg(r); setError(null);
       } catch (err) {
@@ -53,35 +56,54 @@ export default function CustomersPage() {
     tick();
     const id = setInterval(tick, POLL_MS);
     return () => { alive = false; clearInterval(id); };
-  }, []);
+  }, [store]);
 
   const rupees = (n: number) => "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const noPos = store === "STORE_BLR_009" || (!!seg?.note && seg.note.includes("No POS"));
 
   return (
     <div className="space-y-6">
       <PageHeader title="Customers"
-        subtitle="Non-demographic segments — no gender/age inferred or stored. Shopping party (CV), repeat purchase & basket (POS)." />
+        subtitle={`Non-demographic segments — shopping party (CV), repeat purchase & basket (POS). ${storeLabel(store)}.`} />
 
       {error && <ErrorBanner message={error} />}
 
+      {seg?.note && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-300">
+          {seg.note}
+        </div>
+      )}
+
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <SplitCard label="Shopping party (CV footfall)" loading={loading}
+        <SplitCard label={`Shopping party (entry-detected: ${seg?.shopping_party.entry_detected ?? 0})`} loading={loading}
           a={seg?.shopping_party.solo ?? 0} aLabel="Solo"
           b={seg?.shopping_party.group ?? 0} bLabel="Group" />
-        <SplitCard label="New vs repeat (POS)" loading={loading}
-          a={seg ? seg.customers.unique - seg.customers.repeat : 0} aLabel="New"
-          b={seg?.customers.repeat ?? 0} bLabel="Repeat" />
+        {noPos ? (
+          <NoDataStat label="New vs repeat" reason="POS customer IDs unavailable — no POS feed for Store 2" />
+        ) : (
+          <SplitCard label="New vs repeat (POS)" loading={loading}
+            a={seg ? seg.customers.unique - seg.customers.repeat : 0} aLabel="New"
+            b={seg?.customers.repeat ?? 0} bLabel="Repeat" />
+        )}
       </section>
 
-      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard loading={loading} label="Unique customers" value={seg?.customers.unique}
-          sub={`repeat rate ${seg ? (seg.customers.repeat_rate * 100).toFixed(0) : "—"}%`} />
-        <StatCard loading={loading} label="Avg items / bill" value={seg?.basket.avg_items_per_bill} />
-        <StatCard loading={loading} label="Avg basket value"
-          value={seg ? rupees(seg.basket.avg_value_per_bill) : undefined} emphasis />
-        <StatCard loading={loading} label="Multi-brand bills" value={seg?.basket.multi_brand_bills}
-          sub={`of ${seg?.basket.bills ?? 0} bills · avg ${seg?.basket.avg_brands_per_bill ?? 0} brands`} />
-      </section>
+      {noPos ? (
+        <Card className="px-4 py-6 text-sm text-slate-400">
+          Basket value, items/bill and repeat-purchase metrics are derived from the POS export, which
+          Store 2 doesn&apos;t have. The shopping-party split above (solo vs group) is CV-only and
+          works without POS.
+        </Card>
+      ) : (
+        <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatCard loading={loading} label="Unique customers" value={seg?.customers.unique}
+            sub={`repeat rate ${seg ? (seg.customers.repeat_rate * 100).toFixed(0) : "—"}%`} />
+          <StatCard loading={loading} label="Avg items / bill" value={seg?.basket.avg_items_per_bill} />
+          <StatCard loading={loading} label="Avg basket value"
+            value={seg ? rupees(seg.basket.avg_value_per_bill) : undefined} emphasis />
+          <StatCard loading={loading} label="Multi-brand bills" value={seg?.basket.multi_brand_bills}
+            sub={`of ${seg?.basket.bills ?? 0} bills · avg ${seg?.basket.avg_brands_per_bill ?? 0} brands`} />
+        </section>
+      )}
 
       {!loading && seg && (
         <p className="text-xs text-slate-600">

@@ -7,6 +7,7 @@ import { cx } from "./ui";
 // Minimal inline icons (lucide-style) — no icon dependency.
 const I = {
   live: "M3 12h4l3 8 4-16 3 8h4",
+  stores: "M3 9h18M3 9l1.5-5h15L21 9M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M9 20v-6h6v6",
   funnel: "M3 4h18l-7 8v6l-4 2v-8z",
   brands: "M20.59 13.41 11 3.99 4 4l-.01 7 9.42 9.42a2 2 0 0 0 2.83 0l4.35-4.18a2 2 0 0 0 0-2.83zM7.5 8.5h.01",
   customers: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm13 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75",
@@ -16,6 +17,7 @@ const I = {
 
 const NAV: { href: string; label: string; icon: keyof typeof I }[] = [
   { href: "/", label: "Live", icon: "live" },
+  { href: "/stores", label: "Stores", icon: "stores" },
   { href: "/funnel", label: "Funnel", icon: "funnel" },
   { href: "/brands", label: "Brands", icon: "brands" },
   { href: "/customers", label: "Customers", icon: "customers" },

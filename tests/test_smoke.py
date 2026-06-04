@@ -1,3 +1,6 @@
+# PROMPT: "Smoke-test that the API app imports, the schema validates a sample event, and /health responds."
+# CHANGES MADE: Kept it dependency-light so it runs as the first fast gate in CI.
+
 import pytest
 import sys
 import os

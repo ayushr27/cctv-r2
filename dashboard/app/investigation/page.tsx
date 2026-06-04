@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getInvestigation, type Incident } from "../../lib/api";
+import { getStoreInvestigation, storeLabel, type StoreIncident } from "../../lib/api";
+import { useStore } from "../../components/StoreContext";
 import { Card, PageHeader, Badge, Skeleton, EmptyState, ErrorBanner, cx } from "../../components/ui";
 import ClipPlayer from "../../components/ClipPlayer";
 
@@ -13,6 +14,7 @@ const TONE: Record<string, Tone> = { critical: "danger", warning: "warning", inf
 
 const KIND_LABEL: Record<string, string> = {
   unbilled_cash_approach: "Unbilled cash approach",
+  billing_without_pos: "Billing activity (no POS)",
   long_unattended_dwell: "Long unattended dwell",
 };
 
@@ -22,7 +24,7 @@ function clock(ts: string): string {
   } catch { return ts; }
 }
 
-function IncidentCard({ inc }: { inc: Incident }) {
+function IncidentCard({ inc }: { inc: StoreIncident }) {
   const [open, setOpen] = useState(false);
   return (
     <Card className="transition-colors hover:border-border-strong">
@@ -42,7 +44,8 @@ function IncidentCard({ inc }: { inc: Incident }) {
       </button>
       {open && (
         <div className="border-t border-border px-4 pb-4 pt-1">
-          <ClipPlayer clip={inc.clip_ref as any} review={inc.clip_ref.review} />
+          {/* clip_ref is a superset of Clip (extra from/to/review); ClipPlayer guards on .available */}
+          <ClipPlayer clip={inc.clip_ref as unknown as import("../../lib/api").Clip} review={inc.clip_ref.review} />
           <details className="mt-3">
             <summary className="cursor-pointer text-[11px] uppercase tracking-wide text-slate-500 hover:text-slate-300">
               Raw incident JSON
@@ -58,15 +61,17 @@ function IncidentCard({ inc }: { inc: Incident }) {
 }
 
 export default function InvestigationPage() {
-  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const { store } = useStore();
+  const [incidents, setIncidents] = useState<StoreIncident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
+    setLoading(true);
     const tick = async () => {
       try {
-        const r = await getInvestigation();
+        const r = await getStoreInvestigation(store);
         if (!alive) return;
         setIncidents(r.incidents); setError(null);
       } catch (err) {
@@ -78,7 +83,7 @@ export default function InvestigationPage() {
     tick();
     const id = setInterval(tick, POLL_MS);
     return () => { alive = false; clearInterval(id); };
-  }, []);
+  }, [store]);
 
   const counts = incidents.reduce<Record<string, number>>((a, i) => {
     a[i.severity] = (a[i.severity] ?? 0) + 1; return a;
@@ -86,7 +91,8 @@ export default function InvestigationPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Investigation" subtitle="Loss-prevention review prompts — behavioural, identity-free."
+      <PageHeader title="Investigation"
+        subtitle={`Loss-prevention review prompts — behavioural, identity-free. ${storeLabel(store)}.`}
         actions={
           <div className="flex gap-2">
             {(["critical", "warning", "info"] as const).map((s) => (
@@ -110,7 +116,10 @@ export default function InvestigationPage() {
       )}
 
       {!loading && incidents.length === 0 && !error && (
-        <EmptyState>No incidents flagged in the current window.</EmptyState>
+        <EmptyState>
+          No incidents flagged for this store/window
+          {store === "STORE_BLR_009" && " — run the Store 2 detection pipeline to populate"}.
+        </EmptyState>
       )}
 
       {!loading && (

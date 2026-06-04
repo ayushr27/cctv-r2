@@ -82,6 +82,58 @@ brand maps to exactly one zone so zone revenue reconciles to the POS total.
 
 ---
 
+## PDF-contract layer (ingest-first, multi-store)
+
+The original build served a single store from a read-only event log. The official
+problem statement is **multi-store and ingest-first**, so a second, parallel layer
+was added **without disturbing the working dashboard**:
+
+- **Canonical schema** (`api/schemas/canonical.py`) — the PDF "Required Output
+  Schema": UPPERCASE event types, `event_id` / `visitor_id` / `dwell_ms` /
+  `confidence` / `metadata`. Distinct from the legacy dotted `visit.*` envelope,
+  which still backs the original endpoints.
+- **`POST /events/ingest`** → `CanonicalStore` (`api/services/canonical_store.py`):
+  in-memory SQLite keyed on `event_id` (PRIMARY KEY → `INSERT OR IGNORE` =
+  idempotency), per-row validate+normalize (partial success), batch ≤ 500.
+- **Tolerant ingest** (`ingest_normalize.py`) maps the provided
+  `sample_events.jsonl` shape (lowercase `entry`/`zone_entered`/`queue_completed`,
+  `id_token`, `store_code`, `gender_pred`) onto canonical, so either schema replays.
+  Rows without an `event_id` get a deterministic `uuid5`, so re-POSTing dedups.
+- **`GET /stores/{id}/{metrics,funnel,heatmap,anomalies}`** (`intelligence.py`)
+  compute **session-based, staff-excluded, re-entry-deduped** metrics live from the
+  ingested events, joined to POS for conversion. Unknown/empty store → **200 + zeros**
+  (never 404), so the acceptance gate always gets valid JSON. Graceful degradation:
+  a never-loaded store raises `StoreUnavailable` → structured **503**.
+- **`GET /health`** reports per-store last-event lag + a `STALE_FEED` warning.
+- **Two stores**: Store 1 = `STORE_BLR_002` (POS `ST1008`); Store 2 = `STORE_BLR_009`
+  (pink-uniform staff, no POS export, clips **not** time-synced → per-camera only).
+  The *same* pipeline serves both via `worker/store_config.py` (camera roles +
+  uniform HSV) — adding a store is a config entry, not new code.
+- **Seed**: `scripts/internal_to_canonical.py` converts the committed legacy log into
+  `events/canonical.seed.jsonl` (Store 1), so a fresh clone answers
+  `/stores/STORE_BLR_002/metrics` with real data — no detection run required.
+
+## AI-Assisted Decisions
+
+This challenge expects AI use; three places an LLM shaped the design, and where I
+agreed or overrode it:
+
+1. **Schema contradiction (agreed, with a hedge).** I asked an LLM how to reconcile
+   the PDF "Required Output Schema" with the provided `sample_events.jsonl` (different
+   field names + casing). It proposed treating the PDF schema as canonical and
+   normalizing the sample on ingest. I agreed, then went further: `/events/ingest`
+   synthesizes a deterministic `uuid5` `event_id` for sample rows that lack one, so
+   re-POSTing the sample is idempotent instead of duplicating.
+2. **Anomaly metric: Counter vs Gauge (overrode).** For the Prometheus anomaly metric
+   an assistant first used a `_total` Counter; under 5-second dashboard polling it
+   inflated. I overrode it to a `Gauge` refreshed once at startup, and renamed off the
+   reserved `_total` suffix (see CHOICES §).
+3. **Demographics via VLM (agreed, heavily caveated).** The footage is face-blurred,
+   so I had an LLM draft a VLM prompt that reasons from body/clothing and is told to
+   answer `unknown` when unsure (`worker/demographics.py::VLM_PROMPT`). I agreed to
+   ship it (the owner opted in) but gated it **off by default**, flag every output
+   `is_face_hidden=true`, and keep the seed demographic-free.
+
 ## Component table
 
 | Component | Responsibility | Inputs | Outputs |

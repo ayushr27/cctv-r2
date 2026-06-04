@@ -1,3 +1,6 @@
+# PROMPT: "Test brand engagement: per-stand dwell joined to POS revenue/units/top-products, with a browsed-but-not-bought signal."
+# CHANGES MADE: Added a staff-excluded assertion and a brand-with-no-sales case the first draft skipped.
+
 """
 Tests for brand-stand engagement (services/brands.py): attention (zone dwell,
 staff excluded) joined to POS outcome (revenue / units / top products).

@@ -40,10 +40,23 @@ def _candidate_paths() -> List[str]:
     env = os.environ.get("POS_CSV")
     paths = [env] if env else []
     paths += [
+        # Rich 39-column Brigade export first (powers brand/zone breakdowns);
         "/data/pos/Brigade_Bangalore_10_April_26.csv",
         "data/pos/Brigade_Bangalore_10_April_26.csv",
         "Brigade_Bangalore_10_April_26.csv",
+        # then the slim 7-column challenge export under resources/ as a fallback
+        # (same store/day, fewer columns — load() autodetects the schema).
+        "/data/pos/pos_transactions.csv",
+        "data/pos/pos_transactions.csv",
+        "resources/POS - sample transactionsb1e826f.csv",
     ]
+    # Last resort: any CSV dropped into resources/ that looks like a POS export.
+    try:
+        import glob
+
+        paths += sorted(glob.glob("resources/POS*.csv"))
+    except Exception:  # noqa: BLE001
+        pass
     return [p for p in paths if p]
 
 
@@ -82,10 +95,10 @@ def _safe_int(v) -> int:
 
 class Bill:
     __slots__ = ("invoice_number", "ts", "ts_ms", "amount", "items",
-                 "salesperson_id", "brands", "customer_number")
+                 "salesperson_id", "brands", "customer_number", "store_id")
 
     def __init__(self, invoice_number, ts, amount, items, salesperson_id, brands,
-                 customer_number=""):
+                 customer_number="", store_id=""):
         self.invoice_number = invoice_number
         self.ts = ts                      # ISO-8601 string
         self.ts_ms = _parse_iso_ms(ts)
@@ -94,6 +107,7 @@ class Bill:
         self.salesperson_id = salesperson_id
         self.brands = sorted(brands)
         self.customer_number = customer_number  # for new-vs-returning segments
+        self.store_id = store_id          # POS store key (e.g. ST1008)
 
     def as_dict(self) -> dict:
         return {
@@ -103,6 +117,7 @@ class Bill:
             "items": self.items,
             "salesperson_id": self.salesperson_id,
             "brands": self.brands,
+            "store_id": self.store_id,
         }
 
 
@@ -123,43 +138,32 @@ class PosJoin:
         bills: List[Bill] = []
         brand_lines: List[tuple] = []
         if resolved and Path(resolved).exists():
-            grouped: Dict[str, List[dict]] = defaultdict(list)
             with open(resolved, newline="") as f:
-                for row in csv.DictReader(f):
-                    inv = (row.get("invoice_number") or "").strip()
-                    if inv:
-                        grouped[inv].append(row)
-                    brand = (row.get("brand_name") or "").strip()
-                    dt = _parse_ts(row.get("order_date", ""), row.get("order_time", ""))
-                    if brand and dt is not None:
-                        brand_lines.append((
-                            int(dt.timestamp() * 1000),
-                            brand,
-                            _safe_float(row.get("total_amount")),
-                            _safe_int(row.get("qty")),
-                            (row.get("product_name") or "").strip(),
-                        ))
+                reader = csv.DictReader(f)
+                fields = set(reader.fieldnames or [])
+                rows = list(reader)
 
-            for inv, items in grouped.items():
-                # bill ts = earliest line-item timestamp
-                dts = [
-                    _parse_ts(r.get("order_date", ""), r.get("order_time", ""))
-                    for r in items
-                ]
-                dts = [d for d in dts if d is not None]
-                if not dts:
-                    continue
-                ts = min(dts).isoformat()
-                amount = sum(_safe_float(r.get("total_amount")) for r in items)
-                qty = sum(_safe_int(r.get("qty")) for r in items)
-                sp = Counter(
-                    (r.get("salesperson_id") or "").strip() for r in items
-                ).most_common(1)[0][0]
-                brands = {(r.get("brand_name") or "").strip() for r in items if r.get("brand_name")}
-                cust = Counter(
-                    (r.get("customer_number") or "").strip() for r in items
-                ).most_common(1)[0][0]
-                bills.append(Bill(inv, ts, amount, qty, sp, brands, cust))
+            # Per-line brand revenue (when the CSV carries brand_name). Powers the
+            # dashboard /brands + /zones joins; absent qty/product degrade to 0/"".
+            for row in rows:
+                brand = (row.get("brand_name") or "").strip()
+                dt = self._row_dt(row, fields)
+                if brand and dt is not None:
+                    brand_lines.append((
+                        int(dt.timestamp() * 1000),
+                        brand,
+                        _safe_float(row.get("total_amount") or row.get("basket_value_inr")),
+                        _safe_int(row.get("qty") or 1),
+                        (row.get("product_name") or "").strip(),
+                    ))
+
+            # Autodetect the POS schema by its columns (plan §3):
+            if "invoice_number" in fields:
+                bills = self._bills_by_invoice(rows)        # rich Brigade export
+            elif "transaction_id" in fields:
+                bills = self._bills_per_row(rows, fields)   # PDF pos_transactions
+            else:
+                bills = self._bills_by_timestamp(rows)      # slim challenge export
 
         bills.sort(key=lambda b: b.ts_ms or 0)
         self.bills = bills
@@ -169,17 +173,97 @@ class PosJoin:
             "pos_loaded",
             source=resolved,
             bills=len(bills),
+            stores=sorted({b.store_id for b in bills if b.store_id}),
             total_revenue=round(sum(b.amount for b in bills), 2),
         )
         return len(bills)
 
+    # -- schema-specific bill builders -----------------------------------
+
+    @staticmethod
+    def _row_dt(row: dict, fields: set):
+        """Parse a row timestamp across all three POS schemas (→ aware datetime)."""
+        if "timestamp" in fields and row.get("timestamp"):
+            ms = _parse_iso_ms(row["timestamp"])
+            return datetime.fromtimestamp(ms / 1000, tz=IST) if ms is not None else None
+        return _parse_ts(row.get("order_date", ""), row.get("order_time", ""))
+
+    def _bills_by_invoice(self, rows: List[dict]) -> List[Bill]:
+        """Rich export: group line items by invoice_number into one bill."""
+        grouped: Dict[str, List[dict]] = defaultdict(list)
+        for row in rows:
+            inv = (row.get("invoice_number") or "").strip()
+            if inv:
+                grouped[inv].append(row)
+        out: List[Bill] = []
+        for inv, items in grouped.items():
+            dts = [_parse_ts(r.get("order_date", ""), r.get("order_time", "")) for r in items]
+            dts = [d for d in dts if d is not None]
+            if not dts:
+                continue
+            ts = min(dts).isoformat()
+            amount = sum(_safe_float(r.get("total_amount")) for r in items)
+            qty = sum(_safe_int(r.get("qty")) for r in items)
+            sp = Counter((r.get("salesperson_id") or "").strip() for r in items).most_common(1)[0][0]
+            brands = {(r.get("brand_name") or "").strip() for r in items if r.get("brand_name")}
+            cust = Counter((r.get("customer_number") or "").strip() for r in items).most_common(1)[0][0]
+            store = (items[0].get("store_id") or "").strip()
+            out.append(Bill(inv, ts, amount, qty, sp, brands, cust, store))
+        return out
+
+    def _bills_per_row(self, rows: List[dict], fields: set) -> List[Bill]:
+        """PDF schema: one transaction per row (transaction_id, timestamp, basket_value_inr)."""
+        out: List[Bill] = []
+        for r in rows:
+            dt = self._row_dt(r, fields)
+            if dt is None:
+                continue
+            amount = _safe_float(r.get("basket_value_inr") or r.get("total_amount"))
+            txn = (r.get("transaction_id") or r.get("order_id") or "").strip()
+            store = (r.get("store_id") or "").strip()
+            brands = {(r.get("brand_name") or "").strip()} - {""}
+            out.append(Bill(txn, dt.isoformat(), amount, 1, "", brands, "", store))
+        return out
+
+    def _bills_by_timestamp(self, rows: List[dict]) -> List[Bill]:
+        """
+        Slim challenge export: no invoice column, so reconstruct baskets by
+        grouping line items that share (store_id, order_date, order_time) — rows
+        with an identical timestamp are one paying party (verified in the data).
+        """
+        grouped: Dict[tuple, List[dict]] = defaultdict(list)
+        for r in rows:
+            key = (
+                (r.get("store_id") or "").strip(),
+                (r.get("order_date") or "").strip(),
+                (r.get("order_time") or "").strip(),
+            )
+            grouped[key].append(r)
+        out: List[Bill] = []
+        for (store, od, ot), items in grouped.items():
+            dt = _parse_ts(od, ot)
+            if dt is None:
+                continue
+            amount = sum(_safe_float(r.get("total_amount")) for r in items)
+            brands = {(r.get("brand_name") or "").strip() for r in items if r.get("brand_name")}
+            txn = f"{store}-{od}-{ot}"
+            out.append(Bill(txn, dt.isoformat(), amount, len(items), "", brands, "", store))
+        return out
+
     # -- queries ----------------------------------------------------------
 
-    def get_bills(self, from_: Optional[str] = None, to_: Optional[str] = None) -> List[Bill]:
+    def get_bills(
+        self,
+        from_: Optional[str] = None,
+        to_: Optional[str] = None,
+        store_id: Optional[str] = None,
+    ) -> List[Bill]:
         lo, hi = _parse_iso_ms(from_), _parse_iso_ms(to_)
         out = []
         for b in self.bills:
             if b.ts_ms is None:
+                continue
+            if store_id is not None and b.store_id != store_id:
                 continue
             if lo is not None and b.ts_ms < lo:
                 continue
@@ -187,6 +271,23 @@ class PosJoin:
                 continue
             out.append(b)
         return out
+
+    def transactions(
+        self,
+        store_id: Optional[str] = None,
+        from_: Optional[str] = None,
+        to_: Optional[str] = None,
+    ) -> List[Tuple[int, float]]:
+        """
+        (ts_ms, basket_value) per bill for a store/window — the minimal POS
+        surface the canonical ``/stores/{id}`` conversion join needs. A store
+        with no POS rows (e.g. Store 2) returns ``[]`` → conversion 0, not error.
+        """
+        return [
+            (b.ts_ms, b.amount)
+            for b in self.get_bills(from_, to_, store_id)
+            if b.ts_ms is not None
+        ]
 
     def revenue_in_window(
         self, from_: Optional[str] = None, to_: Optional[str] = None

@@ -17,56 +17,18 @@ from datetime import timedelta
 from pathlib import Path
 
 import cv2
-import numpy as np
 import structlog
 
 from config import DEFAULT_FPS, PERSON_CLASS, YOLO_MODEL, get_start_datetime
+from store_config import uniform_spec
+from uniform import uniform_fraction
 
 logger = structlog.get_logger()
 
-# "Black clothing" = a pixel that is both dark (low Value) AND achromatic (low
-# Saturation). Requiring low S is what separates a black uniform from dark-but-
-# coloured clothing (navy/maroon) — critical on this dim evening footage where a
-# brightness-only test flags almost everyone.
-BLACK_V_MAX = 80   # HSV Value (0–255): below this = dark
-BLACK_S_MAX = 55   # HSV Saturation (0–255): below this = near-greyscale (black)
-
-
-def outfit_darkness(img, bbox) -> tuple[float, float]:
-    """
-    Fraction of *black* pixels (low V AND low S) in the torso and leg bands of a
-    person box — a proxy for "black top" / "black bottom".
-
-    We center-crop horizontally (0.25–0.75 of width) to avoid arms/background,
-    sample the torso (0.15–0.55 of height) and legs (0.55–0.92), and return
-    (top_dark, bot_dark) each in [0, 1]. Returns (0, 0) for degenerate crops.
-    """
-    h_img, w_img = img.shape[:2]
-    x1, y1, x2, y2 = bbox
-    x1 = max(0, int(x1)); y1 = max(0, int(y1))
-    x2 = min(w_img, int(x2)); y2 = min(h_img, int(y2))
-    bw, bh = x2 - x1, y2 - y1
-    if bw < 6 or bh < 12:
-        return 0.0, 0.0
-
-    cx1 = x1 + int(0.25 * bw)
-    cx2 = x1 + int(0.75 * bw)
-    if cx2 <= cx1:
-        return 0.0, 0.0
-
-    def black_frac(ya: float, yb: float) -> float:
-        ry1 = y1 + int(ya * bh)
-        ry2 = y1 + int(yb * bh)
-        band = img[ry1:ry2, cx1:cx2]
-        if band.size == 0:
-            return 0.0
-        hsv = cv2.cvtColor(band, cv2.COLOR_BGR2HSV)
-        s = hsv[:, :, 1]
-        v = hsv[:, :, 2]
-        black = (v < BLACK_V_MAX) & (s < BLACK_S_MAX)
-        return round(float(np.mean(black)), 3)
-
-    return black_frac(0.15, 0.55), black_frac(0.55, 0.92)
+# Staff-uniform colour matching lives in uniform.py (per-store: black for
+# Store 1, pink for Store 2). detect.py resolves the store's spec once and
+# measures the per-detection uniform fraction; the field names top_dark/bot_dark
+# are kept for downstream compatibility — they now mean "uniform-match fraction".
 
 
 def configure_logging() -> None:
@@ -117,6 +79,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Camera label written into every detection record (e.g. cam3)",
     )
+    parser.add_argument(
+        "--store",
+        default="STORE_BLR_002",
+        help="Store id selecting the staff-uniform colour (default: STORE_BLR_002)",
+    )
     return parser.parse_args()
 
 
@@ -125,6 +92,13 @@ def run_detection(args: argparse.Namespace) -> None:
 
     configure_logging()
     log = logger.bind(video=args.video, out=args.out, fps=args.fps)
+
+    # Per-store staff-uniform colour (black for Store 1, pink for Store 2).
+    try:
+        spec = uniform_spec(args.store)
+    except KeyError:
+        spec = {"mode": "black"}
+        log.warning("unknown_store_uniform_default_black", store=args.store)
 
     video_path = Path(args.video)
     if not video_path.exists():
@@ -165,6 +139,12 @@ def run_detection(args: argparse.Namespace) -> None:
 
     model = YOLO(YOLO_MODEL)
 
+    # Tuned BoT-SORT (larger track_buffer etc.) to de-fragment tracks; falls back
+    # to the packaged default if the file was stripped from the image.
+    tuned = Path(__file__).with_name("botsort_tuned.yaml")
+    tracker_cfg = str(tuned) if tuned.exists() else "botsort.yaml"
+    log.info("tracker_config", tracker=tracker_cfg)
+
     wall_start = time.monotonic()
     frames_processed = 0
     total_detections = 0
@@ -175,7 +155,7 @@ def run_detection(args: argparse.Namespace) -> None:
             source=str(video_path),
             classes=[PERSON_CLASS],
             persist=True,
-            tracker="botsort.yaml",
+            tracker=tracker_cfg,
             device=args.device,
             stream=True,
             verbose=False,
@@ -201,7 +181,7 @@ def run_detection(args: argparse.Namespace) -> None:
 
                     top_dark, bot_dark = (0.0, 0.0)
                     if frame_img is not None:
-                        top_dark, bot_dark = outfit_darkness(frame_img, xyxy)
+                        top_dark, bot_dark = uniform_fraction(frame_img, xyxy, spec)
 
                     record = {
                         "frame": orig_frame,

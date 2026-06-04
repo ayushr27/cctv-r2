@@ -1,0 +1,10 @@
+# Keep the Docker build hermetic: the image installs deps with `npm ci`, so the
+# host's node_modules must NOT be copied over it by `COPY . .` (a partial/stale
+# host install — e.g. missing tailwindcss — would otherwise clobber the clean
+# install and break `npm run build`). Also skip local build output + env.
+node_modules
+.next
+out
+npm-debug.log*
+.env*.local
+.DS_Store

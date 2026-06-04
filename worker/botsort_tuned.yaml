@@ -1,0 +1,30 @@
+# Tuned BoT-SORT tracker (de-fragmentation) — used by worker/detect.py.
+#
+# Why a custom config: the default botsort.yaml fragments one shopper into many
+# track-ids on these CCTV clips (a brief occlusion ends the track, the person
+# reappears under a new id), which inflates footfall. The raw per-frame data
+# showed ~6-8 people on-camera at once but 26-49 distinct ids per camera.
+#
+# Levers that WORK in the pinned ultralytics 8.3.40 (ReID is "not supported yet"
+# in this version, so with_reid stays False — we de-fragment with motion/IoU):
+#   * track_buffer 30 -> 90 : keep a lost track alive ~3x longer so a person who
+#     is briefly occluded keeps their id when they reappear (the main fix).
+#   * new_track_thresh 0.25 -> 0.5 : a low-confidence unmatched detection no
+#     longer spawns a brand-new id (fewer spurious tracks).
+#   * match_thresh 0.8 -> 0.85 : slightly more lenient association on re-appear.
+# Schema is identical to the 8.3.40 default (same keys) so model.track() never
+# errors on an unknown field. Further de-fragmentation happens at the event layer
+# (events.py re-entry gate) and in scripts/occupancy.py (raw track merge).
+tracker_type: botsort
+track_high_thresh: 0.25
+track_low_thresh: 0.1
+new_track_thresh: 0.5
+track_buffer: 90
+match_thresh: 0.85
+fuse_score: True
+
+# BoT-SORT settings
+gmc_method: sparseOptFlow
+proximity_thresh: 0.5
+appearance_thresh: 0.25
+with_reid: False

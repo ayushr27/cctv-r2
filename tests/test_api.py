@@ -1,3 +1,6 @@
+# PROMPT: "Write FastAPI TestClient tests for the legacy endpoints (/metrics, /funnel, /events, /health) over a seeded event store, asserting the window query actually changes the numbers."
+# CHANGES MADE: Pinned the assertions to the committed sample's real counts and added the "outputs vary with the query window" integrity check.
+
 """
 API integration tests via httpx.AsyncClient + ASGITransport.
 

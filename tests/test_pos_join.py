@@ -1,3 +1,6 @@
+# PROMPT: "Test the POS join: grouping line items into bills and the 5-minute-bucket conversion (capped at 1.0)."
+# CHANGES MADE: Added the bills-in-zero-footfall-bucket evidence assertion and the conversion cap case.
+
 """
 Tests for the POS join service against the REAL Brigade Bangalore CSV.
 
@@ -79,3 +82,41 @@ def test_conversion_in_window_ratio():
     # 100 visits vs far fewer bills => conversion well under 1
     assert res["conversion_rate"] < 0.5
     assert "evidence" in res
+
+
+def test_slim_csv_groups_baskets_by_timestamp(tmp_path):
+    # The new challenge POS export has no invoice column; rows sharing a
+    # (store, date, time) are one basket.
+    csv_text = (
+        "order_id,order_date,order_time,store_id,product_id,brand_name,total_amount\n"
+        "1,10-04-2026,12:15:05,ST1008,399945,Faces Canada,302.33\n"
+        "2,10-04-2026,12:15:05,ST1008,353621,Faces Canada,491.77\n"
+        "3,10-04-2026,12:15:05,ST1008,333323,Faces Canada,453.88\n"
+        "4,10-04-2026,12:42:18,ST1008,407887,Purplle,100.00\n"
+        "5,10-04-2026,12:42:18,ST1008,384974,Faces Canada,397.38\n"
+    )
+    p = tmp_path / "slim.csv"
+    p.write_text(csv_text)
+    pos = PosJoin()
+    n = pos.load(str(p))
+    assert n == 2  # two baskets
+    assert all(b.store_id == "ST1008" for b in pos.bills)
+    assert round(sum(b.amount for b in pos.bills), 2) == 1745.36
+    # store-filtered transactions() surface for the canonical conversion join
+    assert len(pos.transactions("ST1008")) == 2
+    assert pos.transactions("OTHER_STORE") == []
+
+
+def test_pdf_schema_one_bill_per_row(tmp_path):
+    csv_text = (
+        "store_id,transaction_id,timestamp,basket_value_inr\n"
+        "STORE_BLR_002,TXN1,2026-03-03T14:38:12Z,1240.00\n"
+        "STORE_BLR_002,TXN2,2026-03-03T14:41:55Z,680.00\n"
+    )
+    p = tmp_path / "pdf.csv"
+    p.write_text(csv_text)
+    pos = PosJoin()
+    n = pos.load(str(p))
+    assert n == 2
+    assert round(sum(b.amount for b in pos.bills), 2) == 1920.0
+    assert len(pos.transactions("STORE_BLR_002")) == 2

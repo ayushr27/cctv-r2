@@ -63,13 +63,19 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
             return response
         finally:
             duration_ms = round((time.perf_counter() - start) * 1000, 2)
+            # PDF Part C requires: trace_id, store_id, endpoint, latency_ms,
+            # event_count (ingest), status_code. event_count is bound onto the
+            # contextvars by the ingest route and merged in automatically.
             logger.info(
                 "request",
+                trace_id=request_id,
+                store_id=request.path_params.get("store_id"),
+                endpoint=_route_template(request),
                 method=request.method,
                 path=request.url.path,
                 query=request.url.query or None,
-                status=status,
-                duration_ms=duration_ms,
+                status_code=status,
+                latency_ms=duration_ms,
             )
             structlog.contextvars.clear_contextvars()
 

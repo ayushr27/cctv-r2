@@ -1,3 +1,6 @@
+# PROMPT: "Generate pytest cases for the anomaly detectors (footfall drop, conversion drop, zone starvation) by feeding synthetic event payloads + a fake POS and asserting kind/severity/evidence."
+# CHANGES MADE: Replaced the model's magic numbers with the detectors' real thresholds and added a zero-traffic case so an empty window emits no false anomalies.
+
 """
 Unit tests for the three anomaly detectors.
 

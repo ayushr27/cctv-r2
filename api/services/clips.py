@@ -20,15 +20,23 @@ from typing import Optional
 
 IST = timezone(timedelta(hours=5, minutes=30))
 FOOTAGE_DATE = "2026-04-10"
-MAX_CLIP_S = 200  # generous cap on sample-clip length for availability checks
+MAX_CLIP_S = 600  # generous cap on sample-clip length for availability checks
 
 # Wall-clock time each camera's footage STARTS (read off the on-screen clock at
-# ingest). In a real DVR this would come from the recording's metadata.
+# ingest). In a real DVR this would come from the recording's metadata. The
+# detection pipeline anchors every store's events to FOOTAGE_DATE, so a single
+# date works for both stores; only the per-clip start time differs.
 CAMERA_START = {
+    # Store 1
     "cam1": "20:10:27",
     "cam2": "20:10:02",
     "cam3": "20:10:00",
     "cam5": "20:09:48",
+    # Store 2 (mirrors worker/store_config.py so investigation snippets resolve)
+    "entry1": "19:39:06",
+    "entry2": "19:39:06",
+    "zone": "15:27:51",
+    "billing": "15:28:00",
 }
 
 _VIDEO_DIRS = ["/data/samples", os.path.join(os.path.dirname(__file__), "..", "..", "data", "samples")]

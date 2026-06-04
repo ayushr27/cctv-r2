@@ -1,8 +1,10 @@
 {
   "_note": "Zone->POS-brand map, mirrored from worker/zones.json (kept in api/ so the route needs no cross-build-context read, same pattern as api/schemas/events.py). Regenerate when zones.json changes.",
+  "_note_store2": "Store 2 (left_wall/right_wall/cash_counter, camera zone/billing) has NO POS export and no published planogram, so its brand lists are INDICATIVE of the wall's product category (skincare vs makeup) — the dashboard surfaces CV attention only and flags 'no POS' for Store 2.",
   "zones": {
     "the_face_shop": {
       "camera": "cam1",
+      "label": "The Face Shop",
       "brands": [
         "The Face Shop",
         "Beauty of Joseon",
@@ -56,8 +58,31 @@
     },
     "accessories": {
       "camera": "cam5",
+      "label": "Accessories",
       "brands": [
         "Streax"
+      ]
+    },
+    "left_wall": {
+      "camera": "zone",
+      "label": "Left wall — skincare (Store 2)",
+      "brands": [
+        "DERMDOC",
+        "Good Vibes",
+        "Foxtale",
+        "Aqualogica",
+        "COSRX"
+      ]
+    },
+    "right_wall": {
+      "camera": "zone",
+      "label": "Right wall — makeup (Store 2)",
+      "brands": [
+        "Faces Canada",
+        "Maybelline",
+        "Lakme",
+        "NY Bae",
+        "Swiss Beauty"
       ]
     }
   }

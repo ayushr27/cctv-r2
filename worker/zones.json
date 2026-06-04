@@ -69,5 +69,63 @@
       "brands": ["Streax"],
       "_note": "Illuminated ACCESSORIES display board on the right. (GUBB is mapped to makeup_unit only, to avoid double-counting brand revenue across zones.)"
     }
+  },
+
+  "_store2_meta": {
+    "_note": "Store 2 (STORE_BLR_009), 960x1080 frames. Polygons below are PROVISIONAL — calibrated by eye from a mid-clip frame; re-annotate with scripts/annotate_zones.py. Store 2 clips are NOT time-synced across cameras (on-screen dates/clocks differ: billing 08/03 18:28, zone 18/03 15:28, entry 29/03 19:39), so cross-camera session fusion is not meaningful — Store 2 validates per-camera detection + the pink-uniform staff rule + the multi-store API. No POS export exists for Store 2, so its zones carry no brand-revenue join."
+  },
+
+  "entry1": {
+    "_role": "Store 2 footfall — glass entrance doors",
+    "_frame_size": [960, 1080],
+    "_provisional": true,
+    "entry_line": {
+      "type": "line",
+      "points": [[140, 640], [820, 640]],
+      "direction": "in_when_y_increases",
+      "_note": "Horizontal threshold across the glass doorway; customers cross top(mall)->bottom(store) to enter."
+    }
+  },
+
+  "entry2": {
+    "_role": "Store 2 footfall — secondary entrance angle",
+    "_frame_size": [960, 1080],
+    "_provisional": true,
+    "entry_line": {
+      "type": "line",
+      "points": [[120, 600], [840, 600]],
+      "direction": "in_when_y_increases",
+      "_note": "Provisional threshold; re-annotate against 'entry 2.mp4'."
+    }
+  },
+
+  "zone": {
+    "_role": "Store 2 floor — corner shelf walls (skincare/cosmetics)",
+    "_frame_size": [960, 1080],
+    "_provisional": true,
+    "left_wall": {
+      "type": "polygon",
+      "points": [[0, 300], [330, 300], [330, 770], [0, 770]],
+      "brands": [],
+      "_note": "Left shelf wall facing the floor."
+    },
+    "right_wall": {
+      "type": "polygon",
+      "points": [[370, 280], [770, 280], [770, 830], [370, 830]],
+      "brands": [],
+      "_note": "Right shelf wall facing the floor."
+    }
+  },
+
+  "billing": {
+    "_role": "Store 2 billing — central cash counter (CAM6); pink-uniform staff visible",
+    "_frame_size": [960, 1080],
+    "_provisional": true,
+    "cash_counter": {
+      "type": "polygon",
+      "points": [[330, 380], [710, 380], [710, 1010], [330, 1010]],
+      "brands": [],
+      "_note": "White billing desk with the laptop + the customer standing area directly in front of it."
+    }
   }
 }

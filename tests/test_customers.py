@@ -1,3 +1,6 @@
+# PROMPT: "Test the non-demographic customer segments (solo vs group, new vs repeat, basket composition)."
+# CHANGES MADE: Made the new-vs-repeat assertion tolerant of the slim POS (no customer_number) so it degrades instead of failing.
+
 """
 Tests for non-demographic customer segments (services/customers.py):
 solo/group (CV), new/repeat (POS), basket composition (POS).

@@ -1,3 +1,6 @@
+# PROMPT: "Test re-entry gating (time + distance) so a person who steps out and returns keeps one visit_id."
+# CHANGES MADE: Added just-outside-the-gate (new visit) and tie-break-by-distance cases.
+
 """
 Tests for temporal+spatial re-entry gating in worker.events.EventDeriver.
 

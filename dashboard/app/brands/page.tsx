@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getBrands, type BrandStand } from "../../lib/api";
+import { getStoreBrands, storeLabel, type StoreBrands } from "../../lib/api";
+import { useStore } from "../../components/StoreContext";
 import { Card, PageHeader, Badge, Skeleton, Bar, ErrorBanner } from "../../components/ui";
 
 const POLL_MS = 5000;
 
-function rupees(n: number): string {
-  return "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
-}
+const rupees = (n: number) => "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
 
 function signalTone(signal: string): "warning" | "success" | "neutral" {
   if (signal.includes("low conversion") || signal.includes("opportunity")) return "warning";
@@ -17,17 +16,19 @@ function signalTone(signal: string): "warning" | "success" | "neutral" {
 }
 
 export default function BrandsPage() {
-  const [stands, setStands] = useState<BrandStand[]>([]);
+  const { store } = useStore();
+  const [data, setData] = useState<StoreBrands | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
+    setLoading(true);
     const tick = async () => {
       try {
-        const r = await getBrands();
+        const r = await getStoreBrands(store);
         if (!alive) return;
-        setStands(r.stands); setError(null);
+        setData(r); setError(null);
       } catch (err) {
         if (alive) setError(String(err));
       } finally {
@@ -37,16 +38,24 @@ export default function BrandsPage() {
     tick();
     const id = setInterval(tick, POLL_MS);
     return () => { alive = false; clearInterval(id); };
-  }, []);
+  }, [store]);
 
+  const stands = data?.stands ?? [];
   const maxAttn = Math.max(1, ...stands.map((s) => s.attention_seconds));
+  const noPos = store === "STORE_BLR_009" || (!!data?.note && data.note.includes("No POS"));
 
   return (
     <div className="space-y-6">
       <PageHeader title="Brand stands"
-        subtitle="Customer attention (dwell) joined to POS outcome — revenue, units and top products. Aggregate & identity-free." />
+        subtitle={`Customer attention (dwell) joined to POS outcome — ${storeLabel(store)}. Aggregate & identity-free.`} />
 
       {error && <ErrorBanner message={error} />}
+
+      {data?.note && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-300">
+          {data.note}
+        </div>
+      )}
 
       <div className="space-y-3">
         {loading &&
@@ -54,10 +63,17 @@ export default function BrandsPage() {
             <Card key={i} className="p-5"><Skeleton className="h-24 w-full" /></Card>
           ))}
 
+        {!loading && stands.length === 0 && (
+          <Card className="px-4 py-10 text-center text-sm text-slate-500">
+            No brand-stand activity in this window
+            {store === "STORE_BLR_009" && " — run the Store 2 detection pipeline to populate"}.
+          </Card>
+        )}
+
         {!loading && stands.map((s) => (
           <Card key={s.stand} className="p-5 transition-colors hover:border-border-strong">
             <div className="flex items-center gap-3">
-              <span className="text-sm font-semibold text-white">{s.stand}</span>
+              <span className="text-sm font-semibold text-white">{s.label}</span>
               {s.camera && <Badge tone="neutral">{s.camera}</Badge>}
               <span className="ml-auto"><Badge tone={signalTone(s.signal)}>{s.signal}</Badge></span>
             </div>
@@ -72,9 +88,15 @@ export default function BrandsPage() {
 
             <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-xs sm:grid-cols-4">
               <Metric label="Visits" value={String(s.visits)} />
-              <Metric label="Revenue" value={rupees(s.revenue)} tone="text-emerald-300" />
-              <Metric label="Units" value={String(s.units)} />
-              <Metric label="₹ / visit" value={rupees(s.revenue_per_visit)} />
+              {noPos ? (
+                <Metric label="Attention share" value={`${(s.attention_share * 100).toFixed(0)}%`} />
+              ) : (
+                <>
+                  <Metric label="Revenue" value={rupees(s.revenue)} tone="text-emerald-300" />
+                  <Metric label="Units" value={String(s.units)} />
+                  <Metric label="₹ / visit" value={rupees(s.revenue_per_visit)} />
+                </>
+              )}
             </div>
 
             {s.top_products.length > 0 && (
@@ -83,7 +105,7 @@ export default function BrandsPage() {
                 {s.top_products.map((p) => `${p.product} (${p.units})`).join("  ·  ")}
               </div>
             )}
-            <div className="mt-2 text-[11px] text-slate-600">{s.brands.join(" · ")}</div>
+            {s.brands.length > 0 && <div className="mt-2 text-[11px] text-slate-600">{s.brands.join(" · ")}</div>}
           </Card>
         ))}
       </div>

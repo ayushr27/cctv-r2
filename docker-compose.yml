@@ -4,6 +4,10 @@ services:
     volumes:
       - ./events:/events
       - ./data:/data:ro
+      # so `run_pipeline.sh` (process-your-own-video) can see the orchestrator
+      # script + the raw clips from inside the worker image:
+      - ./scripts:/app/scripts:ro
+      - ./resources:/app/resources:ro
     networks:
       - app_net
 

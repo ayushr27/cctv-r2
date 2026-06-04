@@ -2,6 +2,14 @@ events/events.jsonl
 events/events.classified.jsonl
 events/events_cam*.jsonl
 events/raw_*.jsonl
+events/STORE_*/
+# (events/canonical.seed.jsonl IS tracked — the API loads it on a fresh clone)
+
+# local dev venv + derived calibration/transcode artifacts (not source)
+.venv-api/
+.venv/
+data/frames/
+data/samples/
 worker/models/*.pt
 *.mp4
 *.zip
@@ -14,3 +22,19 @@ __pycache__/
 **/.coverage
 htmlcov/
 .env.local
+
+# Challenge-licensed inputs — CCTV footage, store layouts, POS export, the brief.
+# "Challenge use only — must NOT be published, trained on or redistributed", so
+# they are kept OUT of git entirely (they stay on disk locally for the pipeline).
+resources/
+CCTV Footage/
+data/layout/
+data/pos/
+*.pdf
+*.xlsx
+*.csv
+dashboard/public/store_layout.png
+dashboard/public/store2_layout.png
+dashboard/public/store_frame.jpg
+.DS_Store
+**/.DS_Store

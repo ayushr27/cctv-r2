@@ -120,3 +120,93 @@ export function EmptyState({ children }: { children: ReactNode }) {
     <Card className="px-4 py-10 text-center text-sm text-slate-500">{children}</Card>
   );
 }
+
+// A "value not available" stat (e.g. revenue for a store with no POS feed) —
+// rendered muted with a reason so it never reads as a misleading ₹0.
+export function NoDataStat({ label, reason }: { label: string; reason: string }) {
+  return (
+    <Card className="border-dashed p-5">
+      <div className="text-[11px] font-medium uppercase tracking-wider text-slate-500">{label}</div>
+      <div className="mt-2 text-3xl font-semibold tracking-tight text-slate-600">—</div>
+      <div className="mt-1.5 text-xs text-slate-600">{reason}</div>
+    </Card>
+  );
+}
+
+const AGE_ORDER = ["0-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"];
+
+// Best-effort demographics: a gender split bar + an age-bucket histogram, shown
+// as proportions so the panel reads coherently regardless of sample size. Used
+// on both Live and Stores. Clearly labelled as a directional estimate.
+export function DemographicsPanel({
+  gender,
+  age,
+  note,
+  loading,
+}: {
+  gender: Record<string, number>;
+  age: Record<string, number>;
+  note?: string;
+  loading?: boolean;
+}) {
+  const f = (gender["F"] ?? 0) + (gender["Female"] ?? 0);
+  const m = (gender["M"] ?? 0) + (gender["Male"] ?? 0);
+  const gTotal = f + m;
+  const fPct = gTotal ? Math.round((f / gTotal) * 100) : 0;
+  const ageEntries = Object.entries(age).sort(
+    (a, b) => AGE_ORDER.indexOf(a[0]) - AGE_ORDER.indexOf(b[0])
+  );
+  const aMax = Math.max(1, ...ageEntries.map(([, n]) => n));
+  const aTotal = ageEntries.reduce((s, [, n]) => s + n, 0) || 1;
+  const empty = gTotal === 0 && ageEntries.length === 0;
+
+  return (
+    <Card className="p-5">
+      <div className="mb-1 flex items-center gap-2 text-sm font-medium text-white">
+        Demographics <Badge tone="neutral">best-effort</Badge>
+      </div>
+      <p className="mb-4 text-xs text-slate-500">
+        {note ?? "Body/VLM estimate on face-blurred footage — directional only."}
+      </p>
+      {loading && <Skeleton className="h-24 w-full" />}
+      {!loading && empty && (
+        <p className="text-xs text-slate-500">No demographic signals in this window.</p>
+      )}
+      {!loading && !empty && (
+        <div className="grid gap-6 sm:grid-cols-2">
+          <div>
+            <div className="mb-2 flex justify-between text-[11px] uppercase tracking-wider text-slate-500">
+              <span>Gender</span>
+              <span>{gTotal} visitors (est.)</span>
+            </div>
+            <div className="flex h-3 w-full overflow-hidden rounded-full bg-elevated">
+              <div className="h-full bg-accent transition-all duration-500" style={{ width: `${fPct}%` }} />
+              <div className="h-full bg-sky-500/70 transition-all duration-500" style={{ width: `${100 - fPct}%` }} />
+            </div>
+            <div className="mt-2 flex justify-between text-xs text-slate-300">
+              <span><span className="text-accent-hover">●</span> Female {fPct}% <span className="text-slate-500">({f})</span></span>
+              <span>Male {100 - fPct}% <span className="text-slate-500">({m})</span> <span className="text-sky-400">●</span></span>
+            </div>
+          </div>
+          <div>
+            <div className="mb-2 text-[11px] uppercase tracking-wider text-slate-500">Age bucket</div>
+            <div className="space-y-1.5">
+              {ageEntries.length === 0 && <p className="text-xs text-slate-500">No age signal.</p>}
+              {ageEntries.map(([b, n]) => (
+                <div key={b} className="flex items-center gap-2">
+                  <span className="w-12 shrink-0 text-[11px] tabular-nums text-slate-400">{b}</span>
+                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-elevated">
+                    <div className="h-full rounded-full bg-accent/80 transition-all duration-500" style={{ width: `${(n / aMax) * 100}%` }} />
+                  </div>
+                  <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-slate-500">
+                    {Math.round((n / aTotal) * 100)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}

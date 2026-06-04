@@ -1,3 +1,6 @@
+# PROMPT: "Test the loss-prevention detectors (unbilled cash approach, long dwell), asserting camera + timestamp + clip refs and no identity data."
+# CHANGES MADE: Added the staff-excluded long-dwell case and verified no PII fields appear in the output.
+
 """
 Tests for the privacy-preserving investigation detectors
 (services/investigation.py): unbilled cash approach + long unattended dwell.

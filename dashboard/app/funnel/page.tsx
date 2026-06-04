@@ -2,38 +2,59 @@
 
 import { useEffect, useState } from "react";
 import {
-  FunnelChart, Funnel as RFunnel, LabelList, Tooltip, ResponsiveContainer, Cell,
-} from "recharts";
-import { getFunnel, getZones, type Funnel, type Zone } from "../../lib/api";
-import { Card, PageHeader, Badge, Skeleton, ErrorBanner } from "../../components/ui";
+  getStoreFunnel, getStoreHeatmap, storeLabel,
+  type StoreFunnel, type StoreHeatmap,
+} from "../../lib/api";
+import { useStore } from "../../components/StoreContext";
+import { Card, PageHeader, Skeleton, ErrorBanner, Bar } from "../../components/ui";
 
 const POLL_MS = 5000;
-// single-hue indigo scale — restrained, professional
-const STAGE_SHADES = ["#a5b4fc", "#818cf8", "#6366f1", "#4f46e5", "#4338ca"];
 
-const ZONE_POS: Record<string, { x: number; y: number }> = {
-  the_face_shop: { x: 22, y: 11 },
-  dermdoc: { x: 45, y: 11 },
-  makeup_unit: { x: 56, y: 48 },
-  faces_canada: { x: 55, y: 90 },
-  alps_goodness: { x: 78, y: 90 },
-  cash_counter: { x: 85, y: 42 },
-  accessories: { x: 83, y: 12 },
+// Per-store floor-plan + bubble positions, keyed by canonical zone_id (positions
+// are % of the layout image, hand-calibrated to the provided plans in
+// resources/Store {1,2}). A store with no entry here (or the cumulative ALL view,
+// whose zones span both plans) falls back to the bar heatmap below.
+type Layout = { img: string; aspect: string; zones: Record<string, { x: number; y: number }> };
+const STORE_LAYOUTS: Record<string, Layout> = {
+  STORE_BLR_002: {
+    img: "/store_layout.png",
+    aspect: "940 / 451",
+    zones: {
+      the_face_shop: { x: 22, y: 11 },
+      dermdoc: { x: 45, y: 11 },
+      makeup_unit: { x: 56, y: 48 },
+      faces_canada: { x: 55, y: 90 },
+      alps_goodness: { x: 78, y: 90 },
+      cash_counter: { x: 85, y: 42 },
+      accessories: { x: 83, y: 12 },
+    },
+  },
+  STORE_BLR_009: {
+    img: "/store2_layout.png",
+    aspect: "960 / 1210", // portrait plan: entrance bottom, cash counter top
+    zones: {
+      cash_counter: { x: 47, y: 27 },
+      right_wall: { x: 90, y: 46 },
+      left_wall: { x: 9, y: 46 },
+    },
+  },
 };
 
 export default function FunnelPage() {
-  const [funnel, setFunnel] = useState<Funnel | null>(null);
-  const [zones, setZones] = useState<Zone[]>([]);
+  const { store } = useStore();
+  const [funnel, setFunnel] = useState<StoreFunnel | null>(null);
+  const [heat, setHeat] = useState<StoreHeatmap | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
+    setLoading(true);
     const tick = async () => {
       try {
-        const [f, z] = await Promise.all([getFunnel(), getZones()]);
+        const [f, h] = await Promise.all([getStoreFunnel(store), getStoreHeatmap(store)]);
         if (!alive) return;
-        setFunnel(f); setZones(z.zones); setError(null);
+        setFunnel(f); setHeat(h); setError(null);
       } catch (err) {
         if (alive) setError(String(err));
       } finally {
@@ -43,115 +64,147 @@ export default function FunnelPage() {
     tick();
     const id = setInterval(tick, POLL_MS);
     return () => { alive = false; clearInterval(id); };
-  }, []);
+  }, [store]);
 
-  const chartData = funnel?.stages.map((s, i) => ({
-    name: s.name, value: s.count, fill: STAGE_SHADES[i % STAGE_SHADES.length],
-  })) ?? [];
+  const stages = funnel?.stages ?? [];
+  const maxStage = Math.max(1, ...stages.map((s) => s.count));
+  const zones = heat?.zones ?? [];
   const maxVisits = Math.max(1, ...zones.map((z) => z.visits));
+  const layout = STORE_LAYOUTS[store];
+  const hasFloorplan = !!layout && zones.some((z) => layout.zones[z.zone_id]);
 
   return (
     <div className="space-y-8">
-      <PageHeader title="Conversion funnel & zones"
-        subtitle="Five-stage funnel and per-zone engagement on the store floor plan." />
+      <PageHeader
+        title="Conversion funnel & zones"
+        subtitle={`Entry → Zone → Billing → Purchase, and per-zone engagement — ${storeLabel(store)}.`}
+      />
 
       {error && <ErrorBanner message={error} />}
 
       <Card className="p-6">
-        <h2 className="mb-4 text-sm font-medium text-slate-300">Conversion funnel</h2>
+        <h2 className="mb-5 text-sm font-medium text-slate-300">Conversion funnel</h2>
         {loading ? (
-          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-48 w-full" />
+        ) : maxStage <= 1 && stages.every((s) => s.count === 0) ? (
+          <p className="py-8 text-center text-sm text-slate-500">
+            No funnel data in this window
+            {store === "STORE_BLR_009" && " — run the Store 2 detection pipeline to populate"}.
+          </p>
         ) : (
-          <>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <FunnelChart>
-                  <Tooltip contentStyle={{ background: "#161a24", border: "1px solid #2d3344", borderRadius: 10, fontSize: 12 }}
-                    itemStyle={{ color: "#e2e8f0" }} labelStyle={{ color: "#94a3b8" }} />
-                  <RFunnel dataKey="value" data={chartData} isAnimationActive>
-                    <LabelList position="right" fill="#cbd5e1" stroke="none" dataKey="name" className="text-xs" />
-                    <LabelList position="left" fill="#64748b" stroke="none" dataKey="value" />
-                    {chartData.map((d, i) => <Cell key={i} fill={d.fill} />)}
-                  </RFunnel>
-                </FunnelChart>
-              </ResponsiveContainer>
-            </div>
-            {funnel && (
-              <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
-                {funnel.drop_off_rates.map((d, i) => (
-                  <Badge key={i} tone={d < 0 ? "warning" : "neutral"}>
-                    {funnel.stages[i].name} → {funnel.stages[i + 1].name}: {(d * 100).toFixed(1)}%
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </>
+          <div className="space-y-3">
+            {stages.map((s, i) => {
+              const w = Math.max(8, (s.count / maxStage) * 100);
+              return (
+                <div key={s.stage}>
+                  <div className="mb-1 flex items-baseline justify-between text-xs">
+                    <span className="font-medium capitalize text-slate-200">
+                      {s.stage.replace(/_/g, " ")}
+                    </span>
+                    <span className="tabular-nums text-slate-400">
+                      {s.count}
+                      {i > 0 && s.drop_off > 0 && (
+                        <span className="ml-2 text-red-400">−{(s.drop_off * 100).toFixed(0)}%</span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex justify-center">
+                    <div
+                      className="flex h-10 items-center justify-center rounded-lg bg-gradient-to-b from-accent/80 to-accent text-sm font-semibold text-white shadow-pop transition-all duration-500"
+                      style={{ width: `${w}%` }}
+                    >
+                      {w > 12 && s.count}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <p className="pt-2 text-center text-[11px] text-slate-500">
+              {funnel?.sessions} sessions · staff excluded · re-entries de-duplicated
+              {funnel?.data_confidence === "low" && " · low confidence (small sample)"}
+            </p>
+          </div>
         )}
       </Card>
 
       <Card className="p-6">
         <h2 className="text-sm font-medium text-slate-300">Zone heatmap</h2>
         <p className="mb-4 mt-1 text-xs text-slate-500">
-          Bubble size ∝ visits, placed on the real Brigade Road floor plan. Each zone maps to
-          the POS brands shelved there.
+          {hasFloorplan
+            ? "Bubble size ∝ visits, placed on the real store floor plan."
+            : "Visit intensity per zone (staff excluded)."}
         </p>
         {loading ? (
-          <Skeleton className="aspect-[940/451] w-full" />
-        ) : (
+          <div className="w-full" style={{ aspectRatio: layout?.aspect ?? "940 / 451" }}>
+            <Skeleton className="h-full w-full" />
+          </div>
+        ) : zones.length === 0 ? (
+          <p className="py-8 text-center text-sm text-slate-500">No zone activity in this window.</p>
+        ) : hasFloorplan ? (
           <div className="relative w-full overflow-hidden rounded-lg border border-border">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/store_layout.png" alt="store floor plan" className="w-full" />
+            <img src={layout!.img} alt="store floor plan" className="w-full" />
             {zones.map((z) => {
-              const pos = ZONE_POS[z.name];
+              const pos = layout!.zones[z.zone_id];
               if (!pos) return null;
               const size = 22 + (z.visits / maxVisits) * 52;
               const opacity = 0.35 + (z.visits / maxVisits) * 0.5;
               return (
-                <div key={z.name} className="absolute -translate-x-1/2 -translate-y-1/2"
+                <div key={z.zone_id} className="absolute -translate-x-1/2 -translate-y-1/2"
                   style={{ left: `${pos.x}%`, top: `${pos.y}%` }}>
                   <div className="flex items-center justify-center rounded-full text-[11px] font-semibold text-white ring-2 ring-accent-hover transition-transform hover:scale-110"
                     style={{ width: size, height: size, background: `rgba(99,102,241,${opacity})` }}
-                    title={`${z.name}: ${z.visits} visits · avg ${z.avg_dwell_seconds}s · ₹${z.brand_revenue}`}>
+                    title={`${z.zone_id}: ${z.visits} visits · avg ${(z.avg_dwell_ms / 1000).toFixed(0)}s`}>
                     {z.visits}
                   </div>
                 </div>
               );
             })}
           </div>
+        ) : (
+          <div className="space-y-3">
+            {zones.map((z) => (
+              <div key={z.zone_id}>
+                <div className="mb-1 flex justify-between text-xs">
+                  <span className="text-slate-300">{z.zone_id}</span>
+                  <span className="tabular-nums text-slate-400">
+                    {z.visits} visits · {(z.avg_dwell_ms / 1000).toFixed(0)}s avg
+                  </span>
+                </div>
+                <Bar value={z.visit_score} max={100} tone="success" />
+              </div>
+            ))}
+          </div>
         )}
 
-        <div className="mt-5 overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-border text-[11px] uppercase tracking-wider text-slate-500">
-                <th className="pb-2 font-medium">Zone</th>
-                <th className="pb-2 text-right font-medium">Visits</th>
-                <th className="pb-2 text-right font-medium">Avg dwell</th>
-                <th className="pb-2 text-right font-medium">Brand revenue</th>
-                <th className="pb-2 pl-4 font-medium">Brands</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {loading
-                ? Array.from({ length: 4 }).map((_, i) => (
-                    <tr key={i}><td colSpan={5} className="py-3"><Skeleton className="h-3 w-full" /></td></tr>
-                  ))
-                : zones.map((z) => (
-                    <tr key={z.name} className="transition-colors hover:bg-elevated/50">
-                      <td className="py-2.5 font-medium text-slate-200">{z.name}</td>
-                      <td className="py-2.5 text-right tabular-nums text-slate-300">{z.visits}</td>
-                      <td className="py-2.5 text-right tabular-nums text-slate-400">{z.avg_dwell_seconds}s</td>
-                      <td className="py-2.5 text-right tabular-nums text-emerald-300">
-                        ₹{z.brand_revenue.toLocaleString("en-IN")}
-                      </td>
-                      <td className="py-2.5 pl-4 text-xs text-slate-500">
-                        {z.brands.slice(0, 3).join(", ")}{z.brands.length > 3 ? "…" : ""}
-                      </td>
-                    </tr>
-                  ))}
-            </tbody>
-          </table>
-        </div>
+        {zones.length > 0 && (
+          <div className="mt-5 overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-border text-[11px] uppercase tracking-wider text-slate-500">
+                  <th className="pb-2 font-medium">Zone</th>
+                  <th className="pb-2 text-right font-medium">Visits</th>
+                  <th className="pb-2 text-right font-medium">Avg dwell</th>
+                  <th className="pb-2 text-right font-medium">Intensity</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {zones.map((z) => (
+                  <tr key={z.zone_id} className="transition-colors hover:bg-elevated/50">
+                    <td className="py-2.5 font-medium text-slate-200">{z.zone_id}</td>
+                    <td className="py-2.5 text-right tabular-nums text-slate-300">{z.visits}</td>
+                    <td className="py-2.5 text-right tabular-nums text-slate-400">
+                      {(z.avg_dwell_ms / 1000).toFixed(0)}s
+                    </td>
+                    <td className="py-2.5 text-right tabular-nums text-emerald-300">
+                      {z.visit_score.toFixed(0)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
     </div>
   );

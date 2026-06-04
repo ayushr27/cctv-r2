@@ -1,3 +1,6 @@
+# PROMPT: "Test footage clip resolution: wall-clock -> in-video offset, the camera allowlist, and graceful availability when the file is absent."
+# CHANGES MADE: Added the path-traversal allowlist case and the out-of-window availability=false case.
+
 """
 Tests for footage clip resolution (services/clips.py): in-video offset math,
 camera allowlist, and graceful availability when the video file is absent.

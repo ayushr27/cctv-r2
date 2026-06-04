@@ -1,3 +1,6 @@
+# PROMPT: "Test the behavioural + uniform staff classifier: >=2 signals OR a uniform match => staff, with clip-relative dwell thresholds."
+# CHANGES MADE: Set the dark/uniform threshold to the constant default (0.85) after the model hard-coded 0.5, and added an all-customer (no-staff) case.
+
 """
 Tests for the behavioral staff classifier (worker/classify.py).
 
