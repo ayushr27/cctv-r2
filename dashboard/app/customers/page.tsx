@@ -59,12 +59,14 @@ export default function CustomersPage() {
   }, [store]);
 
   const rupees = (n: number) => "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const cv = seg?.cv_customers ?? seg?.customers;
+  const pos = seg?.pos_customers;
   const noPos = store === "STORE_BLR_009" || (!!seg?.note && seg.note.includes("No POS"));
 
   return (
     <div className="space-y-6">
       <PageHeader title="Customers"
-        subtitle={`Non-demographic segments — shopping party (CV), repeat purchase & basket (POS). ${storeLabel(store)}.`} />
+        subtitle={`CV unique shoppers, shopping party, and POS repeat/basket context. ${storeLabel(store)}.`} />
 
       {error && <ErrorBanner message={error} />}
 
@@ -74,6 +76,17 @@ export default function CustomersPage() {
         </div>
       )}
 
+      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard loading={loading} label="Unique shoppers" value={cv?.unique}
+          sub={cv?.basis} emphasis />
+        <StatCard loading={loading} label="Zone visitors" value={cv?.zone_visitors}
+          sub="entered a merchandise zone" />
+        <StatCard loading={loading} label="Billing visitors" value={cv?.billing_visitors}
+          sub={noPos ? "seen on billing camera" : "matched against POS where possible"} />
+        <StatCard loading={loading} label="Entry parties" value={seg?.shopping_party.entry_detected}
+          sub="door-camera grouped" />
+      </section>
+
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <SplitCard label={`Shopping party (entry-detected: ${seg?.shopping_party.entry_detected ?? 0})`} loading={loading}
           a={seg?.shopping_party.solo ?? 0} aLabel="Solo"
@@ -82,8 +95,8 @@ export default function CustomersPage() {
           <NoDataStat label="New vs repeat" reason="POS customer IDs unavailable — no POS feed for Store 2" />
         ) : (
           <SplitCard label="New vs repeat (POS)" loading={loading}
-            a={seg ? seg.customers.unique - seg.customers.repeat : 0} aLabel="New"
-            b={seg?.customers.repeat ?? 0} bLabel="Repeat" />
+            a={pos ? pos.unique - pos.repeat : 0} aLabel="New"
+            b={pos?.repeat ?? 0} bLabel="Repeat" />
         )}
       </section>
 
@@ -95,8 +108,8 @@ export default function CustomersPage() {
         </Card>
       ) : (
         <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <StatCard loading={loading} label="Unique customers" value={seg?.customers.unique}
-            sub={`repeat rate ${seg ? (seg.customers.repeat_rate * 100).toFixed(0) : "—"}%`} />
+          <StatCard loading={loading} label="POS customers" value={pos?.unique}
+            sub={`repeat rate ${pos ? (pos.repeat_rate * 100).toFixed(0) : "—"}%`} />
           <StatCard loading={loading} label="Avg items / bill" value={seg?.basket.avg_items_per_bill} />
           <StatCard loading={loading} label="Avg basket value"
             value={seg ? rupees(seg.basket.avg_value_per_bill) : undefined} emphasis />

@@ -34,6 +34,11 @@ STORES: Dict[str, dict] = {
     "STORE_BLR_002": {  # Store 1 — Brigade Road (Bangalore); synced clips
         "footage_date": "2026-04-10",
         "uniform": UNIFORM_BLACK,
+        "classifier": {
+            "uniform_rule": "top_and_bottom",
+            "uniform_threshold": 0.80,
+            "uniform_min_dwell_s": 20.0,
+        },
         "cameras": {
             "cam3": {"role": "entry", "start": "20:10:00"},
             "cam1": {"role": "floor", "start": "20:10:27"},
@@ -44,6 +49,11 @@ STORES: Dict[str, dict] = {
     "STORE_BLR_009": {  # Store 2 — pink-uniform staff; clips NOT cross-synced
         "footage_date": "2026-03-29",
         "uniform": UNIFORM_PINK,
+        "classifier": {
+            "uniform_rule": "top_only",
+            "uniform_threshold": 0.75,
+            "uniform_min_dwell_s": 0.0,
+        },
         "cameras": {
             "entry1": {"role": "entry", "start": "19:39:06"},
             "entry2": {"role": "entry", "start": "19:39:06"},
@@ -62,6 +72,10 @@ def get_store(store_id: str) -> dict:
 
 def uniform_spec(store_id: str) -> dict:
     return get_store(store_id)["uniform"]
+
+
+def classifier_config(store_id: str) -> dict:
+    return dict(get_store(store_id).get("classifier") or {})
 
 
 def camera_role(store_id: str, camera: str) -> Optional[str]:

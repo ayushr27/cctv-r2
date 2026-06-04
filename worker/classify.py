@@ -51,6 +51,11 @@ from typing import Dict, List, Optional
 
 import structlog
 
+try:
+    from store_config import classifier_config
+except Exception:  # pragma: no cover - keeps standalone legacy invocations working
+    classifier_config = None
+
 from schemas import (
     StaffEvidence,
     TrackStaffClassified,
@@ -70,6 +75,8 @@ DEFAULT_MIN_SIGNALS = 2           # >= this many signals => staff
 # black-outfit bar is high (validated against the darkness distribution — 0.85
 # isolates ~5 all-black staff vs 46 at 0.5). Lower it for brighter footage.
 DEFAULT_DARK_THRESHOLD = 0.85     # median top&bot black-fraction >= this => black outfit
+DEFAULT_UNIFORM_RULE = "top_and_bottom"
+DEFAULT_UNIFORM_MIN_DWELL_S = 0.0
 
 
 def configure_logging() -> None:
@@ -147,15 +154,15 @@ def classify(
     zones_min: int,
     min_signals: int,
     dark_threshold: float = DEFAULT_DARK_THRESHOLD,
+    uniform_rule: str = DEFAULT_UNIFORM_RULE,
+    uniform_min_dwell_s: float = DEFAULT_UNIFORM_MIN_DWELL_S,
 ) -> List[str]:
     """
     Return the list of visit_ids classified as staff.
 
-    Staff = black_outfit OR (>= min_signals behavioral signals), where
-    black_outfit = consistently all-black top AND bottom (median darkness over
-    the visit's detections >= dark_threshold). The store's staff wear a black
-    uniform; the behavioral fallback still catches counter operators / floor
-    staff whose outfit reads ambiguously on low-res CCTV.
+    Staff = uniform match OR (>= min_signals behavioral signals). The detection
+    field names still say "dark" for compatibility, but they carry the
+    configured store-uniform match fraction (black for Store 1, pink for Store 2).
     """
     medians = per_camera_median_dwell(visits)
     floor_ms = dwell_floor_s * 1000
@@ -172,10 +179,15 @@ def classify(
         multi_zone = v.zones_count >= zones_min
         cash_anchor = v.cash_passes >= 1 and long_dwell
 
-        black_outfit = v.dark_top >= dark_threshold and v.dark_bot >= dark_threshold
+        dwell_ok = v.total_dwell_ms >= uniform_min_dwell_s * 1000
+        if uniform_rule == "top_only":
+            uniform_match = v.dark_top >= dark_threshold
+        else:
+            uniform_match = v.dark_top >= dark_threshold and v.dark_bot >= dark_threshold
+        uniform_match = uniform_match and dwell_ok
         behavioral = sum([long_dwell, multi_zone, cash_anchor]) >= min_signals
 
-        if black_outfit or behavioral:
+        if uniform_match or behavioral:
             staff.append(vid)
     return staff
 
@@ -210,6 +222,7 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Behavioral staff classification pass")
     p.add_argument("--in", dest="in_path", default="events/events.jsonl")
     p.add_argument("--out", dest="out_path", default="events/events.classified.jsonl")
+    p.add_argument("--store", help="Store id selecting classifier uniform thresholds")
     p.add_argument("--dwell-floor-s", type=float, default=DEFAULT_DWELL_FLOOR_S,
                    help="Absolute long-dwell floor in seconds (full-day: 1800)")
     p.add_argument("--dwell-median-mult", type=float, default=DEFAULT_DWELL_MEDIAN_MULT,
@@ -218,8 +231,12 @@ def parse_args() -> argparse.Namespace:
                    help="Multi-zone signal threshold (full-day: 3)")
     p.add_argument("--min-signals", type=int, default=DEFAULT_MIN_SIGNALS,
                    help="Behavioral signals required to classify as staff")
-    p.add_argument("--dark-threshold", type=float, default=DEFAULT_DARK_THRESHOLD,
+    p.add_argument("--dark-threshold", type=float, default=None,
                    help="Median top&bottom clothing darkness >= this => black outfit")
+    p.add_argument("--uniform-rule", choices=("top_and_bottom", "top_only"), default=None,
+                   help="Uniform match rule for the per-detection top/bottom fractions")
+    p.add_argument("--uniform-min-dwell-s", type=float, default=None,
+                   help="Minimum visit dwell before a uniform match can classify staff")
     return p.parse_args()
 
 
@@ -230,13 +247,22 @@ def main():
 
     events = load_jsonl(args.in_path)
     visits = aggregate_visits(events)
+    cfg = classifier_config(args.store) if args.store and classifier_config else {}
     staff_ids = classify(
         visits,
         dwell_floor_s=args.dwell_floor_s,
         dwell_median_mult=args.dwell_median_mult,
         zones_min=args.zones_min,
         min_signals=args.min_signals,
-        dark_threshold=args.dark_threshold,
+        dark_threshold=(
+            args.dark_threshold if args.dark_threshold is not None
+            else cfg.get("uniform_threshold", DEFAULT_DARK_THRESHOLD)
+        ),
+        uniform_rule=args.uniform_rule or cfg.get("uniform_rule", DEFAULT_UNIFORM_RULE),
+        uniform_min_dwell_s=(
+            args.uniform_min_dwell_s if args.uniform_min_dwell_s is not None
+            else cfg.get("uniform_min_dwell_s", DEFAULT_UNIFORM_MIN_DWELL_S)
+        ),
     )
     staff_events = build_staff_events(visits, staff_ids)
 

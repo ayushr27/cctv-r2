@@ -271,6 +271,9 @@ export interface StoreAnomaly {
   severity: "INFO" | "WARN" | "CRITICAL";
   observed?: number;
   zone_id?: string;
+  incident_kind?: string;
+  camera?: string | null;
+  ts?: string;
   evidence: string;
   suggested_action: string;
 }
@@ -356,7 +359,9 @@ export interface StoreCustomers {
   store_id: string;
   window: { from: string | null; to: string | null };
   shopping_party: { solo: number; group: number; entry_detected: number; group_rate: number; basis: string };
-  customers: { unique: number; repeat: number; repeat_rate: number; basis: string };
+  cv_customers: { unique: number; zone_visitors: number; billing_visitors: number; basis: string };
+  customers: { unique: number; zone_visitors: number; billing_visitors: number; basis: string };
+  pos_customers: { unique: number; repeat: number; repeat_rate: number; basis: string };
   basket: {
     bills: number;
     avg_items_per_bill: number;
@@ -374,6 +379,17 @@ export interface StoreIncident {
   camera: string;
   ts: string;
   window: { from: string; to: string };
+  title: string;
+  summary: string;
+  recommended_action: string;
+  metrics: Record<string, number | string | boolean | null>;
+  supporting_events: {
+    ts: string;
+    camera: string | null;
+    event_type: string;
+    zone: string | null;
+    queue_depth?: number | null;
+  }[];
   evidence: string;
   clip_ref: {
     camera: string;

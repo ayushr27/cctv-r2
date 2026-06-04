@@ -133,7 +133,14 @@ export function NoDataStat({ label, reason }: { label: string; reason: string })
   );
 }
 
-const AGE_ORDER = ["0-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"];
+const AGE_ORDER = ["0-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65+", "unknown"];
+
+function genderCount(gender: Record<string, number>, aliases: string[]) {
+  const wanted = new Set(aliases);
+  return Object.entries(gender).reduce((sum, [key, n]) => {
+    return wanted.has(key.trim().toLowerCase()) ? sum + n : sum;
+  }, 0);
+}
 
 // Best-effort demographics: a gender split bar + an age-bucket histogram, shown
 // as proportions so the panel reads coherently regardless of sample size. Used
@@ -149,8 +156,9 @@ export function DemographicsPanel({
   note?: string;
   loading?: boolean;
 }) {
-  const f = (gender["F"] ?? 0) + (gender["Female"] ?? 0);
-  const m = (gender["M"] ?? 0) + (gender["Male"] ?? 0);
+  const f = genderCount(gender, ["f", "female", "woman", "women"]);
+  const m = genderCount(gender, ["m", "male", "man", "men"]);
+  const unknownGender = genderCount(gender, ["unknown", "unk", "u"]);
   const gTotal = f + m;
   const fPct = gTotal ? Math.round((f / gTotal) * 100) : 0;
   const ageEntries = Object.entries(age).sort(
@@ -177,16 +185,25 @@ export function DemographicsPanel({
           <div>
             <div className="mb-2 flex justify-between text-[11px] uppercase tracking-wider text-slate-500">
               <span>Gender</span>
-              <span>{gTotal} visitors (est.)</span>
+              <span>{gTotal} labelled</span>
             </div>
-            <div className="flex h-3 w-full overflow-hidden rounded-full bg-elevated">
-              <div className="h-full bg-accent transition-all duration-500" style={{ width: `${fPct}%` }} />
-              <div className="h-full bg-sky-500/70 transition-all duration-500" style={{ width: `${100 - fPct}%` }} />
-            </div>
-            <div className="mt-2 flex justify-between text-xs text-slate-300">
-              <span><span className="text-accent-hover">●</span> Female {fPct}% <span className="text-slate-500">({f})</span></span>
-              <span>Male {100 - fPct}% <span className="text-slate-500">({m})</span> <span className="text-sky-400">●</span></span>
-            </div>
+            {gTotal > 0 ? (
+              <>
+                <div className="flex h-3 w-full overflow-hidden rounded-full bg-elevated">
+                  <div className="h-full bg-accent transition-all duration-500" style={{ width: `${fPct}%` }} />
+                  <div className="h-full bg-sky-500/70 transition-all duration-500" style={{ width: `${100 - fPct}%` }} />
+                </div>
+                <div className="mt-2 flex justify-between text-xs text-slate-300">
+                  <span><span className="text-accent-hover">●</span> Female {fPct}% <span className="text-slate-500">({f})</span></span>
+                  <span>Male {100 - fPct}% <span className="text-slate-500">({m})</span> <span className="text-sky-400">●</span></span>
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-slate-500">No labelled gender signal.</p>
+            )}
+            {unknownGender > 0 && (
+              <div className="mt-1 text-xs text-slate-500">Unknown / unlabeled: {unknownGender}</div>
+            )}
           </div>
           <div>
             <div className="mb-2 text-[11px] uppercase tracking-wider text-slate-500">Age bucket</div>

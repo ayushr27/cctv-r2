@@ -3,6 +3,9 @@ events/events.classified.jsonl
 events/events_cam*.jsonl
 events/raw_*.jsonl
 events/STORE_*/
+!events/STORE_*/
+events/STORE_*/*
+!events/STORE_*/visitor_demographics.jsonl
 # (events/canonical.seed.jsonl IS tracked — the API loads it on a fresh clone)
 
 # local dev venv + derived calibration/transcode artifacts (not source)
@@ -15,6 +18,7 @@ worker/models/*.pt
 *.zip
 node_modules/
 .next/
+.vercel/
 dashboard/tsconfig.tsbuildinfo
 __pycache__/
 .pytest_cache/

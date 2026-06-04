@@ -57,8 +57,15 @@ app = FastAPI(title="Store Intelligence API", version="0.1.0", lifespan=lifespan
 # CORS: the dashboard runs on a different origin (localhost:3000 in dev,
 # *.vercel.app in deploy) and fetches this API from the browser, so without
 # these headers the browser blocks every request. Origins come from
-# ALLOWED_ORIGINS (comma-separated); dev default is the local dashboard.
-_origins = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+# ALLOWED_ORIGINS (comma-separated); dev default accepts both localhost aliases
+# because Chrome treats localhost and 127.0.0.1 as different origins.
+_default_origins = ",".join([
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+])
+_origins = os.environ.get("ALLOWED_ORIGINS", _default_origins).split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in _origins if o.strip()],
@@ -80,6 +87,16 @@ app.include_router(brands_router)
 app.include_router(customers_router)
 app.include_router(clip_router)
 app.include_router(stores_router)
+
+
+@app.get("/")
+def root():
+    return {
+        "status": "ok",
+        "service": "Store Intelligence API",
+        "health": "/health",
+        "docs": "/docs",
+    }
 
 
 @app.exception_handler(StoreUnavailable)

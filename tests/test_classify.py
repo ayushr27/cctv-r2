@@ -14,6 +14,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "worker"))
+sys.modules.pop("schemas", None)
 
 from classify import (  # noqa: E402
     DEFAULT_DWELL_FLOOR_S,
@@ -27,11 +28,13 @@ from classify import (  # noqa: E402
     per_camera_median_dwell,
 )
 from schemas import (  # noqa: E402
+    load_jsonl,
     VisitApproachedCash,
     VisitApproachedCashPayload,
     VisitEnded,
     VisitEndedPayload,
 )
+from store_config import classifier_config  # noqa: E402
 
 IST = timezone(timedelta(hours=5, minutes=30))
 T0 = datetime(2026, 4, 10, 20, 0, 0, tzinfo=IST)
@@ -174,3 +177,24 @@ def test_aggregate_and_emit_pipeline():
     assert ev.payload.visit_id == "s1"
     assert ev.payload.evidence.total_dwell_ms == 50_000
     assert ev.payload.evidence.cash_passes == 1
+
+
+def _store_fixture_staff_ids(store_id: str) -> list[str]:
+    path = os.path.join(os.path.dirname(__file__), "..", "events", store_id, "events.merged.jsonl")
+    visits = aggregate_visits(load_jsonl(path))
+    cfg = classifier_config(store_id)
+    return classify(
+        visits,
+        **DEFAULTS,
+        dark_threshold=cfg["uniform_threshold"],
+        uniform_rule=cfg["uniform_rule"],
+        uniform_min_dwell_s=cfg["uniform_min_dwell_s"],
+    )
+
+
+def test_store1_fixture_classifies_five_staff():
+    assert len(_store_fixture_staff_ids("STORE_BLR_002")) == 5
+
+
+def test_store2_fixture_classifies_two_staff():
+    assert len(_store_fixture_staff_ids("STORE_BLR_009")) == 2

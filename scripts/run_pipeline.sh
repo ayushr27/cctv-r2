@@ -65,7 +65,7 @@ python scripts/occupancy.py "$OUT"
 
 echo ">> merge + classify staff + convert to canonical"
 cat "${events_files[@]}" > "$OUT/events.merged.jsonl"
-python "$W/classify.py" --in "$OUT/events.merged.jsonl" --out "$OUT/events.jsonl"
+python "$W/classify.py" --store "$STORE" --in "$OUT/events.merged.jsonl" --out "$OUT/events.jsonl"
 python scripts/internal_to_canonical.py "$OUT/events.jsonl" "$OUT/canonical.jsonl" --store-id "$STORE"
 # Best-effort demographics on ENTRY events. This is the OFFLINE stand-in for the
 # real VLM backend (worker/demographics.py): run that instead by setting

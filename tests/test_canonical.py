@@ -359,11 +359,52 @@ def test_conversion_reflects_billing_after_clock_align(client):
     assert "auto-aligned" in j["conversion_evidence"]
 
 
+def test_seed_store_employee_and_demographic_targets(client):
+    s1 = client.get("/stores/STORE_BLR_002/metrics").json()
+    s2 = client.get("/stores/STORE_BLR_009/metrics").json()
+    assert s1["staff_excluded"] == 5
+    assert s2["staff_excluded"] == 2
+    assert s1["total_visitors"] == 16
+    assert s2["total_visitors"] == 12
+    assert s1["demographics"]["gender"]["F"] == 1
+    assert s2["demographics"]["gender"]["F"] == 3
+
+
+def test_seed_customers_cv_unique_is_primary(client):
+    for sid in ("STORE_BLR_002", "STORE_BLR_009"):
+        metrics = client.get(f"/stores/{sid}/metrics").json()
+        customers = client.get(f"/stores/{sid}/customers").json()
+        assert customers["cv_customers"]["unique"] == metrics["total_visitors"]
+        assert customers["customers"]["unique"] == metrics["total_visitors"]
+    store2 = client.get("/stores/STORE_BLR_009/customers").json()
+    assert store2["pos_customers"]["basis"].startswith("unavailable")
+    assert store2["basket"]["bills"] == 0
+    assert store2["note"]
+
+
+def test_seed_anomalies_include_incident_summaries(client):
+    for sid in ("STORE_BLR_002", "STORE_BLR_009"):
+        body = client.get(f"/stores/{sid}/anomalies").json()
+        incidents = [a for a in body["anomalies"] if a["type"] == "INCIDENT_REVIEW"]
+        assert incidents, sid
+        assert all("suggested_action" in a and a["evidence"] for a in incidents)
+
+
+def test_seed_investigation_has_structured_logs(client):
+    for sid in ("STORE_BLR_002", "STORE_BLR_009"):
+        body = client.get(f"/stores/{sid}/investigation").json()
+        assert body["incidents"], sid
+        inc = body["incidents"][0]
+        assert {"title", "summary", "recommended_action", "metrics", "supporting_events", "clip_ref"} <= set(inc)
+        assert inc["supporting_events"]
+        assert {"ts", "camera", "event_type", "zone", "queue_depth"} <= set(inc["supporting_events"][0])
+
+
 # --- counts consistent with footfall (no per-camera inflation) -------------
 
-def test_demographics_counts_scaled_to_footfall(client):
-    # Same 6 people seen on TWO cameras -> 12 gender samples, but footfall is the
-    # busiest single camera (6). The displayed counts must sum to footfall, not 12.
+def test_demographics_uses_explicit_labels_without_scaling(client):
+    # Same 6 people seen on TWO cameras -> 12 labelled sessions. The API should
+    # not rescale or invent a different M/F split; explicit labels pass through.
     s = "TEST_DEMO_SCALE"
     evs = []
     for i in range(6):
@@ -375,8 +416,23 @@ def test_demographics_counts_scaled_to_footfall(client):
     j = client.get(f"/stores/{s}/metrics").json()
     tv = j["total_visitors"]
     assert tv == 6
-    assert sum(j["demographics"]["gender"].values()) == tv
-    assert sum(j["demographics"]["age_bucket"].values()) == tv
+    assert j["demographics"]["gender"]["F"] == 6
+    assert j["demographics"]["gender"]["M"] == 6
+    assert "scaled" not in j["demographics"]["note"]
+
+
+def test_demographics_normalizes_gender_label_variants(client):
+    s = "TEST_DEMO_NORMALIZE"
+    client.post("/events/ingest", json=[
+        ev(s, "v1", "ZONE_ENTER", "2026-04-10T14:00:00Z", meta={"gender_pred": "female"}, camera="c"),
+        ev(s, "v2", "ZONE_ENTER", "2026-04-10T14:00:01Z", meta={"gender_pred": "Woman"}, camera="c"),
+        ev(s, "v3", "ZONE_ENTER", "2026-04-10T14:00:02Z", meta={"gender_pred": "MALE"}, camera="c"),
+        ev(s, "v4", "ZONE_ENTER", "2026-04-10T14:00:03Z", meta={"gender_pred": "unknown"}, camera="c"),
+    ])
+    j = client.get(f"/stores/{s}/metrics").json()
+    assert j["demographics"]["gender"]["F"] == 2
+    assert j["demographics"]["gender"]["M"] == 1
+    assert j["demographics"]["gender"]["unknown"] == 1
 
 
 def test_shopping_party_counts_only_entry_detected(client):

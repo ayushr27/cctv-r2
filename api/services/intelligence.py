@@ -126,8 +126,9 @@ def build_sessions(
         # tags each visitor's first event, which for a floor-only shopper is a
         # ZONE_* not an ENTRY. Pick up the first non-empty value on any event so
         # the panel describes every in-store visitor, not just door-crossers.
-        if meta.get("gender_pred") and s.gender is None:
-            s.gender = meta.get("gender_pred")
+        gender = _gender_bucket(meta.get("gender_pred"))
+        if gender and s.gender is None:
+            s.gender = gender
         if meta.get("age_pred") is not None and s.age is None:
             s.age = meta.get("age_pred")
         if meta.get("age_bucket") and s.age_bucket is None:
@@ -158,6 +159,19 @@ def _customers(sessions: Dict[str, _Session]) -> List[_Session]:
     return [s for s in sessions.values() if not s.is_staff]
 
 
+def _gender_bucket(value) -> Optional[str]:
+    if value is None:
+        return None
+    g = str(value).strip().lower()
+    if g in {"f", "female", "woman", "women"}:
+        return "F"
+    if g in {"m", "male", "man", "men"}:
+        return "M"
+    if g in {"unknown", "unk", "u"}:
+        return "unknown"
+    return None
+
+
 def _per_cam_roots(events: List[dict]) -> Tuple[dict, dict]:
     """(customers, staff): store -> camera -> set of distinct ROOT visitor ids."""
     roots = _resolve_roots(events)
@@ -181,10 +195,10 @@ def _occupancy(store_id: str, events: List[dict]) -> Tuple[int, int, int]:
       peak_occupancy  most people on the busiest FLOOR camera AT ONCE
                       (occupancy.json ``peak``; fragmentation-proof — a split
                       track only adds an id when the person is NOT in frame).
-      total_visitors  busiest floor camera's de-fragmented body count minus the
-                      staff seen there (occupancy.json ``visitors`` — distinct
-                      after merging split tracks; the honest "how many shopped").
-      staff_count     distinct staff on the busiest camera.
+      total_visitors  selected floor camera's de-fragmented body count minus the
+                      staff seen on that SAME source camera. Billing-only staff
+                      do not reduce a floor-camera footfall estimate.
+      staff_count     distinct staff detected across the store.
 
     Falls back to the canonical busiest-camera distinct (REENTRY-collapsed) for a
     store that has not been re-detected yet (no occupancy.json) so the endpoint
@@ -197,17 +211,27 @@ def _occupancy(store_id: str, events: List[dict]) -> Tuple[int, int, int]:
     peak_t = vis_t = staff_t = 0
     for sid in stores:
         floor = set(floor_cameras(sid))
-        staff_n = max((len(v) for v in stf.get(sid, {}).values()), default=0)
+        staff_roots = set().union(*stf.get(sid, {}).values()) if stf.get(sid) else set()
+        staff_n = len(staff_roots)
         cams = occ.get(sid)
         if cams:
             focc = {c: d for c, d in cams.items() if not floor or c in floor} or cams
+            source_cam, source = max(
+                focc.items(),
+                key=lambda item: (int(item[1].get("visitors", 0)), int(item[1].get("peak", 0))),
+            )
             peak = max((int(d.get("peak", 0)) for d in focc.values()), default=0)
-            bodies = max((int(d.get("visitors", 0)) for d in focc.values()), default=0)
-            visitors = max(bodies - staff_n, 0)
+            bodies = int(source.get("visitors", 0))
+            source_staff = len(stf.get(sid, {}).get(source_cam, set()))
+            visitors = max(bodies - source_staff, 0)
         else:  # no raw occupancy yet → canonical busiest-camera distinct
             cc = cust.get(sid, {})
-            fvals = [v for c, v in cc.items() if not floor or c in floor] or list(cc.values())
-            visitors = peak = max((len(v) for v in fvals), default=0)
+            candidates = [(c, v) for c, v in cc.items() if not floor or c in floor] or list(cc.items())
+            if candidates:
+                source_cam, roots = max(candidates, key=lambda item: len(item[1]))
+                visitors = peak = len(roots)
+            else:
+                source_cam, visitors, peak = None, 0, 0
         peak_t += peak
         vis_t += visitors
         staff_t += staff_n
@@ -388,7 +412,9 @@ def metrics(store_id: str, from_: Optional[str] = None, to_: Optional[str] = Non
 
     conv = _conversion(store_id, sessions, from_, to_)
 
-    # best-effort demographics (non-staff). See CHOICES.md accuracy caveat.
+    # Video-derived demographics (non-staff). Counts come from explicit
+    # per-visitor labels; unlabeled shoppers are shown as unknown instead of
+    # scaling/inventing a gender split.
     gender_counts: Dict[str, int] = defaultdict(int)
     age_counts: Dict[str, int] = defaultdict(int)
     for s in customers:
@@ -396,6 +422,12 @@ def metrics(store_id: str, from_: Optional[str] = None, to_: Optional[str] = Non
             gender_counts[s.gender] += 1
         if s.age_bucket:
             age_counts[s.age_bucket] += 1
+    gender_labelled_or_unknown = sum(gender_counts.values())
+    if n > gender_labelled_or_unknown:
+        gender_counts["unknown"] += n - gender_labelled_or_unknown
+    age_labelled_or_unknown = sum(age_counts.values())
+    if n > age_labelled_or_unknown:
+        age_counts["unknown"] += n - age_labelled_or_unknown
 
     return {
         "store_id": store_id,
@@ -416,12 +448,10 @@ def metrics(store_id: str, from_: Optional[str] = None, to_: Optional[str] = Non
         "abandonment_rate": abandonment_rate,
         "billing_queue_joins": joins,
         "billing_queue_abandons": abandons,
-        # Scaled to the footfall headline so the counts never exceed/contradict
-        # total_visitors (the sample is tallied across cameras; proportions kept).
         "demographics": {
-            "gender": _scale_counts(dict(gender_counts), n),
-            "age_bucket": _scale_counts(dict(age_counts), n),
-            "note": "best-effort body/VLM estimate on blur-faced footage, scaled to footfall",
+            "gender": dict(gender_counts),
+            "age_bucket": dict(age_counts),
+            "note": "video-derived body/VLM labels on face-blurred footage; unlabeled shoppers are unknown",
         },
         "conversion_method": conv.get("method"),
         "observed_checkouts": conv.get("observed_checkouts"),
@@ -614,6 +644,19 @@ def anomalies(store_id: str, from_: Optional[str] = None, to_: Optional[str] = N
                 "suggested_action": f"Check stock/signage and the camera feed for {z}.",
             })
 
+    inc_sev = {"critical": "CRITICAL", "warning": "WARN", "info": "INFO"}
+    for inc in investigation(store_id, from_, to_)["incidents"]:
+        out.append({
+            "type": "INCIDENT_REVIEW",
+            "severity": inc_sev.get(inc["severity"], "INFO"),
+            "incident_kind": inc["kind"],
+            "camera": inc["camera"],
+            "ts": inc["ts"],
+            "observed": inc.get("metrics", {}).get("observed"),
+            "evidence": inc.get("summary") or inc["evidence"],
+            "suggested_action": inc.get("recommended_action") or "Review the linked footage and event log.",
+        })
+
     return out
 
 
@@ -801,8 +844,11 @@ def brands(store_id: str, from_: Optional[str] = None, to_: Optional[str] = None
 
 def customers(store_id: str, from_: Optional[str] = None, to_: Optional[str] = None) -> dict:
     win_from, win_to = _window(store_id, from_, to_)  # CV shopping-party window
-    sessions, _ = build_sessions(store_id, win_from, win_to)
+    sessions, events = build_sessions(store_id, win_from, win_to)
     custs = _customers(sessions)
+    cv_unique = _occupancy(store_id, events)[1]
+    zone_visitors = sum(1 for s in custs if s.zones_entered)
+    billing_visitors = sum(1 for s in custs if s.billing_ts)
 
     # Party size is only known for shoppers the ENTRY camera grouped; floor-only
     # shoppers carry no group_size and must NOT be assumed solo (that inflated the
@@ -835,11 +881,23 @@ def customers(store_id: str, from_: Optional[str] = None, to_: Optional[str] = N
             "group_rate": round(group / party_total, 3) if party_total else 0.0,
             "basis": "entry-detected parties (CV, entrance camera) — staff excluded",
         },
+        "cv_customers": {
+            "unique": cv_unique,
+            "zone_visitors": zone_visitors,
+            "billing_visitors": billing_visitors,
+            "basis": "de-fragmented CV shoppers from the selected footfall camera — staff excluded",
+        },
         "customers": {
+            "unique": cv_unique,
+            "zone_visitors": zone_visitors,
+            "billing_visitors": billing_visitors,
+            "basis": "de-fragmented CV shoppers from the selected footfall camera — staff excluded",
+        },
+        "pos_customers": {
             "unique": unique_customers,
             "repeat": repeat_customers,
             "repeat_rate": round(repeat_customers / unique_customers, 3) if unique_customers else 0.0,
-            "basis": "POS customer_number within the window",
+            "basis": "POS customer_number within the window" if has_pos else "unavailable — no POS feed",
         },
         "basket": {
             "bills": n,
@@ -869,10 +927,79 @@ _SEV_RANK = {"critical": 0, "warning": 1, "info": 2}
 _UNBILLED_MIN, _UNBILLED_CRITICAL = 3, 5
 
 
+def _supporting_events(
+    events: List[dict],
+    start_ms: int,
+    end_ms: int,
+    *,
+    camera: Optional[str] = None,
+    visitor_id: Optional[str] = None,
+    roots: Optional[Dict[str, str]] = None,
+    types: Optional[set] = None,
+    staff: Optional[bool] = None,
+    limit: int = 10,
+) -> List[dict]:
+    out: List[dict] = []
+    for ev in events:
+        if ev["ts_ms"] < start_ms or ev["ts_ms"] > end_ms:
+            continue
+        if camera and ev.get("camera_id") != camera:
+            continue
+        if visitor_id and (roots or {}).get(ev["visitor_id"], ev["visitor_id"]) != visitor_id:
+            continue
+        if types and ev["event_type"] not in types:
+            continue
+        if staff is not None and bool(ev["is_staff"]) != staff:
+            continue
+        meta = ev.get("metadata") or {}
+        out.append({
+            "ts": ev["ts_iso"],
+            "camera": ev.get("camera_id"),
+            "event_type": ev["event_type"],
+            "zone": ev.get("zone_id"),
+            "queue_depth": meta.get("queue_depth"),
+        })
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _incident_record(
+    *,
+    kind: str,
+    severity: str,
+    camera: Optional[str],
+    center_ms: int,
+    start_ms: int,
+    end_ms: int,
+    title: str,
+    summary: str,
+    recommended_action: str,
+    metrics: dict,
+    supporting_events: List[dict],
+) -> dict:
+    cam = camera or "?"
+    return {
+        "kind": kind,
+        "severity": severity,
+        "camera": cam,
+        "ts": _iso(center_ms),
+        "window": {"from": _iso(start_ms), "to": _iso(end_ms)},
+        "title": title,
+        "summary": summary,
+        "recommended_action": recommended_action,
+        "metrics": metrics,
+        "supporting_events": supporting_events,
+        "evidence": summary,
+        "clip_ref": _clip_ref(cam, center_ms),
+    }
+
+
 def investigation(store_id: str, from_: Optional[str] = None, to_: Optional[str] = None) -> dict:
     from_, to_ = _window(store_id, from_, to_)
     sessions, events = build_sessions(store_id, from_, to_)
     incidents: List[dict] = []
+    roots = _resolve_roots(events)
 
     # 1) Billing review — for POS stores, cash approaches not matched by a bill
     #    (possible unbilled exit); for no-POS stores (Store 2) we cannot reconcile
@@ -884,7 +1011,7 @@ def investigation(store_id: str, from_: Optional[str] = None, to_: Optional[str]
     joins_by_bucket: Dict[int, List[int]] = defaultdict(list)
     cam_by_bucket: Dict[int, str] = {}
     for ev in events:
-        if ev["event_type"] == "BILLING_QUEUE_JOIN":
+        if ev["event_type"] == "BILLING_QUEUE_JOIN" and not ev["is_staff"]:
             b = (ev["ts_ms"] + offset) // _INV_BUCKET_MS
             joins_by_bucket[b].append(ev["ts_ms"])  # raw ts kept for the clip pointer
             cam_by_bucket[b] = ev.get("camera_id") or "cam5"
@@ -902,34 +1029,59 @@ def investigation(store_id: str, from_: Optional[str] = None, to_: Optional[str]
             stamps = sorted(bt for s in custs for bt in s.billing_ts)
             cam = next(iter(cam_by_bucket.values()), "cam5")
             center = stamps[len(stamps) // 2]
-            incidents.append({
-                "kind": "unbilled_cash_approach",
-                "severity": "critical" if unmatched >= _UNBILLED_CRITICAL else "warning",
-                "camera": cam,
-                "ts": _iso(center),
-                "window": {"from": _iso(stamps[0]), "to": _iso(stamps[-1])},
-                "evidence": (
-                    f"{billing_visitors} customers reached the cash counter but only {converted} "
-                    f"matched a POS bill ({unmatched} unmatched, clock-aligned). Review the footage "
-                    f"for unbilled exits — note not every counter approach is a purchase."
+            summary = (
+                f"{billing_visitors} customer billing presence(s) were detected, "
+                f"{converted} matched a POS bill, leaving {unmatched} unmatched after clock alignment."
+            )
+            incidents.append(_incident_record(
+                kind="unbilled_cash_approach",
+                severity="critical" if unmatched >= _UNBILLED_CRITICAL else "warning",
+                camera=cam,
+                center_ms=center,
+                start_ms=stamps[0],
+                end_ms=stamps[-1],
+                title="Billing presence without matching POS bill",
+                summary=summary,
+                recommended_action=(
+                    "Review the linked billing-camera clip and POS register log for this window; "
+                    "treat as a reconciliation prompt, not an accusation."
                 ),
-                "clip_ref": _clip_ref(cam, center),
-            })
+                metrics={
+                    "observed": unmatched,
+                    "billing_visitors": billing_visitors,
+                    "matched_pos_bills": converted,
+                    "unmatched": unmatched,
+                    "clock_offset_ms": offset,
+                },
+                supporting_events=_supporting_events(
+                    events, stamps[0], stamps[-1], camera=cam,
+                    types={"BILLING_QUEUE_JOIN"}, staff=False, limit=10,
+                ),
+            ))
     elif not _has_pos(store_id):
         for b, stamps in sorted(joins_by_bucket.items()):
             cam, center = cam_by_bucket[b], min(stamps)
-            incidents.append({
-                "kind": "billing_without_pos",
-                "severity": "info",
-                "camera": cam,
-                "ts": _iso(center),
-                "window": {"from": _iso(b * _INV_BUCKET_MS), "to": _iso((b + 1) * _INV_BUCKET_MS)},
-                "evidence": (
-                    f"{len(stamps)} customer(s) reached the billing area in this 5-min window. "
-                    f"No POS feed for this store — open the clip to confirm the sale."
+            start_ms, end_ms = b * _INV_BUCKET_MS, (b + 1) * _INV_BUCKET_MS
+            summary = (
+                f"{len(stamps)} customer billing presence(s) were detected, but this store has "
+                "no POS feed to reconcile against."
+            )
+            incidents.append(_incident_record(
+                kind="billing_without_pos",
+                severity="info",
+                camera=cam,
+                center_ms=center,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                title="Billing activity without POS feed",
+                summary=summary,
+                recommended_action="Open the linked clip to confirm the transaction outcome.",
+                metrics={"observed": len(stamps), "billing_visitors": len(stamps), "pos_feed": 0},
+                supporting_events=_supporting_events(
+                    events, start_ms, end_ms, camera=cam,
+                    types={"BILLING_QUEUE_JOIN"}, staff=False, limit=10,
                 ),
-                "clip_ref": _clip_ref(cam, center),
-            })
+            ))
 
     # 2) Long unattended dwell — customer lingering well beyond normal.
     for s in _customers(sessions):
@@ -939,18 +1091,26 @@ def investigation(store_id: str, from_: Optional[str] = None, to_: Optional[str]
         if dwell < _DWELL_FLOOR_MS:
             continue
         zones = ", ".join(sorted(s.zones_entered)) or "—"
-        incidents.append({
-            "kind": "long_unattended_dwell",
-            "severity": "info",
-            "camera": s.last_cam or "?",
-            "ts": _iso(s.last_ms),
-            "window": {"from": _iso(s.first_ms), "to": _iso(s.last_ms)},
-            "evidence": (
-                f"Customer dwelled {dwell / 1000:.0f}s (zones: {zones}) — well above normal. "
-                f"Review for concealment / tampering."
+        summary = f"Customer dwell reached {dwell / 1000:.0f}s across zones: {zones}."
+        incidents.append(_incident_record(
+            kind="long_unattended_dwell",
+            severity="info",
+            camera=s.last_cam,
+            center_ms=s.last_ms,
+            start_ms=s.first_ms,
+            end_ms=s.last_ms,
+            title="Long unattended customer dwell",
+            summary=summary,
+            recommended_action=(
+                "Review the clip and event log to confirm whether staff assistance, "
+                "loss-prevention follow-up, or camera calibration is needed."
             ),
-            "clip_ref": _clip_ref(s.last_cam, s.last_ms),
-        })
+            metrics={"observed": round(dwell / 1000, 1), "dwell_seconds": round(dwell / 1000, 1)},
+            supporting_events=_supporting_events(
+                events, s.first_ms, s.last_ms, visitor_id=s.visitor_id,
+                roots=roots, limit=10,
+            ),
+        ))
 
     incidents.sort(key=lambda i: (_SEV_RANK.get(i["severity"], 9), i["ts"]))
     return {

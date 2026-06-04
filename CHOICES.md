@@ -61,18 +61,16 @@ plan's literal thresholds (dwell >30 min, ≥3 zones, ≥2 cash passes) cannot f
 2-minute clips, so the "long dwell" signal is clip-relative — `dwell > 40 s` **or**
 `> 4× the per-camera median dwell`.
 
-**Black-uniform cue (added):** the store's staff wear an all-black uniform, so
-`detect.py` measures clothing darkness per person — the fraction of *black* pixels
-(low HSV Value **and** low Saturation, so dark-but-coloured customer clothing is
-excluded) in the torso and leg bands. A visit is staff if it reads all-black on top
-**and** bottom (median ≥ 0.85) **OR** trips ≥2 behavioural signals. This lifts the
-count from 3 (behaviour only) to **8** (5 near billing/CAM 5, 2 on CAM 1, 1 on CAM 2),
-each with the darkness in its evidence. **Honest limitation:** the footage is dim
-evening CCTV, where a brightness-only test flagged 46/69 visits — so the bar is
-deliberately strict (validated against the darkness distribution), the saturation
-gate is what makes it work, and **"no bags" was not implemented** (unreliable without
-a dedicated bag detector). It remains a heuristic: a customer fully in black may be
-miscounted. All thresholds are CLI flags (`--dark-threshold`).
+**Store-aware uniform cue (added):** `detect.py` measures the fraction of pixels
+matching the configured staff uniform, not a store-level count. Store 1 uses the
+black-uniform cue (low HSV Value **and** low Saturation) and classifies a visit when
+top+bottom match ≥0.80 for at least 20s, or when ≥2 behavioural signals fire. Store 2
+uses the pink-shirt HSV cue and classifies a visit when the top band matches ≥0.75,
+or when behaviour independently flags staff. The classifier is passed `--store`, so
+adding a store changes `worker/store_config.py`, not API/UI constants. On the shipped
+clips this yields **5 employees for Store 1** and **2 for Store 2**. **Honest
+limitation:** uniforms remain a heuristic; a customer wearing the same colour can be
+misread, and a partly occluded employee can be missed.
 
 ## 6. POS ↔ CV time-bucket join over identity matching
 
@@ -183,14 +181,13 @@ anonymisation), so this is **body-cue / VLM estimation, not face recognition**:
   answer `unknown` over guessing; the exact prompt is in the module for audit (Part D);
 - the real backend is **OFF by default** (`DEMOGRAPHICS_BACKEND=none`); the production
   path is the VLM prompted on person crops during detection;
-- a CPU-only / offline demo box can't run that VLM, so the committed seed (and any
-  pipeline run) is tagged by `scripts/enrich_demographics.py` — a **deterministic,
-  clearly-labelled directional stand-in** for the VLM output (every event flagged
-  `is_face_hidden`, idempotent, the script's docstring states plainly it is not real
-  inference). It tags the **first event of each distinct visitor** (not only the few who
-  cross a doorway — an ENTRY-only tag had described ~2 of ~30 Store 1 shoppers), and the
-  panel renders proportions (a gender split bar + an age histogram) so it reads coherently
-  regardless of sample size. Flip `DEMOGRAPHICS_BACKEND=vlm` to replace it with the real estimate;
+- a CPU-only / offline demo box can't run that VLM, so the committed seed is tagged by
+  `scripts/enrich_demographics.py` from explicit per-visitor label files
+  (`events/<STORE>/visitor_demographics.jsonl`). The script tags the first event of each
+  labelled visitor and flags every visitor `is_face_hidden=true`; unlabeled shoppers remain
+  `unknown` instead of receiving a hash-generated gender. This preserves the video review
+  counts (**Store 1: 1 female; Store 2: 3 female**) without store-level demographic constants.
+  Flip `DEMOGRAPHICS_BACKEND=vlm` to replace those label rows with model output;
 - every output is flagged `is_face_hidden=true`; the API stores **no identity**, only
   aggregate counts per window.
 **What AI suggested vs chosen:** an assistant offered a face-analysis model; I overrode
@@ -235,13 +232,14 @@ camera, so any "distinct ids" count over-states footfall. Current model:
     Immune to fragmentation (a split track is a new id only when the person is *not* in frame), and
     verifiable by counting heads in the busiest frame. Store 1 ≈ 7, Store 2 ≈ 5.
   - **Total visitors** = distinct ids after a **fragment merge** (ids whose lifespans are disjoint
-    and whose hand-off positions are close collapse into one person) on the busiest floor camera,
-    minus the staff seen there. The honest "how many shopped" estimate. Store 1 ≈ 15, Store 2 ≈ 11.
+    and whose hand-off positions are close collapse into one person) on the selected floor camera,
+    minus only the staff seen on that same source camera. Billing-only employees do not reduce a
+    floor-camera visitor estimate. Store 1 ≈ 16, Store 2 ≈ 12.
   De-fragmentation also happens upstream: a tuned `botsort_tuned.yaml` (`track_buffer` 30→90,
   `new_track_thresh` 0.25→0.5 — ReID is "not supported yet" in the pinned ultralytics 8.3.40, so it
   stays off) plus a wider `events.py` re-entry gate cut raw ids ~2× (cam2 49→21). `door_entries`
   (entry-line crossings) stays a secondary stat.
-- **Staff** = distinct staff on the busiest camera (same de-dup philosophy).
+- **Staff** = distinct staff roots detected across the store (Store 1 = 5, Store 2 = 2).
 - **Conversion (POS stores)** joins billing-zone presence to the **full POS day**, auto-corrects a
   constant clip-clock skew (the eyeballed cam5 clock landed in a bill-gap), and divides by
   **total_visitors** so the rate is consistent with the headline (Store 1 ≈ 13%). A clock
@@ -258,10 +256,12 @@ camera, so any "distinct ids" count over-states footfall. Current model:
   the Store 2 cameras are registered in `clips.py` with their clips transcoded into `data/samples/`
   so investigation snippets play exactly like Store 1.
 - **Count consistency (every panel agrees with footfall).** Session-based panels used to count
-  per-camera tracks (≈26) and so contradicted the de-fragmented footfall (15): demographics and the
-  heatmap now **scale to `total_visitors`** (`_scale_counts`, largest-remainder rounding — proportions
-  kept, integers sum to footfall); shopping-party counts **only entry-detected parties** (floor-only
-  shoppers carry no `group_size` and are no longer assumed "solo"); the heatmap seeds every floor zone
+  per-camera tracks and contradicted the de-fragmented footfall: customer counts now use the CV
+  footfall headline as the primary unique-shopper count; POS customer ids are secondary repeat/basket
+  context only. Demographics no longer scale or invent M/F counts; explicit video-derived labels are
+  counted, and unlabeled shoppers are surfaced as `unknown`. Shopping-party counts **only
+  entry-detected parties** (floor-only shoppers carry no `group_size` and are no longer assumed
+  "solo"); the heatmap seeds every floor zone
   (Store 2 shows `left_wall` even at 0). `DEAD_ZONE` measures "recent" **per camera** so Store 2's
   non-time-synced clips stop firing false alarms, and the **unbilled-cash** check is tied to the
   clock-aligned conversion result (billing visitors − converted ≥ threshold) over the full POS day
